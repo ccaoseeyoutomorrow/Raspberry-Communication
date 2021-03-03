@@ -1,21 +1,18 @@
 # 缺陷复现
-# 不同速度偏置算法
-# 分段椭圆
-# 增加树木边缘时间偏置,假设所有偏置根据不同位置时间不同
-# 计算剩余时间偏置时，假设收发时间偏置不一样
+# 设置时间段为判断依据
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpathes
 from matplotlib.patches import Ellipse
+from matplotlib.colors import LinearSegmentedColormap
 import time
 from numpy.linalg import lstsq
 
-Cell_Number = 100
+Cell_Number = 20
 Ray_Number = 100
 NodeA_num = 8  # 节点数量
 NodeB_num = 8
-Tree_Radius = 10  # 树木半径，单位：cm
+Tree_Radius = 25  # 树木最长直径 单位：cm
 PI = 3.141592654
 
 
@@ -57,8 +54,7 @@ class Ultrasonic_Line():
         self.Time_list = np.zeros(shape=(NodeA_num, NodeB_num))
         self.Distance_list = np.zeros(shape=(NodeA_num, NodeB_num))  # 距离，也是长轴
         self.Speed_list = np.zeros(shape=(NodeA_num, NodeB_num))
-        self.bias = np.zeros(shape=(NodeA_num, NodeB_num))  # 偏置：根据线段距离圆心距离百分比
-        self.bias2 = np.zeros(shape=(NodeA_num, NodeB_num))  # 偏置：1-β*β
+        self.bias = np.zeros(shape=(NodeA_num, NodeB_num))  # 偏置：1-β*β
         self.timebias = np.zeros(shape=(NodeA_num, 2))
 
         for i in range(NodeA_num):  # 距离list赋值
@@ -75,63 +71,114 @@ class Ultrasonic_Line():
         data_list = readfile(file_time_name)
         count = 0
         for i in range(NodeA_num):
-            for j in range(NodeB_num):
+            for j in range(i + 1, NodeB_num):
                 if i != j:
                     # 给时间赋值，单位：毫秒
                     self.Time_list[i][j] = data_list[count]
-                    count += 1
+                    self.Time_list[j][i] = data_list[count]
                 else:
                     self.Time_list[j][i] = 0
+                count += 1
 
         self.Speed_list = np.divide(self.Distance_list, self.Time_list)  # 速度list赋值
         for i in range(len(self.Speed_list)):
             for j in range(len(self.Speed_list)):
                 temp = min(abs(i + NodeA_num - j), abs(i - j))
                 biospi = (90 - temp * 22.5) * math.pi / 180  # 90-temp*22.5°为圆周角度数，角度转化为弧度1°=π/180
-                self.bias2[i][j] = 1 - 0.2 * biospi * biospi
-        self.Speed_list = np.divide(self.Speed_list, self.bias2)
-        # for i in range(len(self.Speed_list)):
-        #     for j in range(len(self.Speed_list)):
-        #         if i!=j:
-        #             percentage=speed_cal(Node_list_T[i],Node_list_T[j],Node_list_T)
-        #             self.bias[i][j]=percentage
-        #         else:
-        #             self.bias[i][j]=1
+                self.bias[i][j] = 1 - 0.2 * biospi * biospi
+        self.Speed_list = np.divide(self.Speed_list, self.bias)
 
+        # 速度归一化操作
+        # 找出比thres大的下标号
+        temp = np.where(self.Speed_list.reshape(NodeA_num * NodeB_num) < 1000)[0]
+        # 找出最大/小速度的下标号
+        maxlabel = temp[self.Speed_list.reshape(NodeA_num * NodeB_num)[temp].argsort()[-1]]
+        mixlabel = temp[self.Speed_list.reshape(NodeA_num * NodeB_num)[temp].argsort()[0]]
+        maxspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[maxlabel]
+        minspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[mixlabel]
+        mm = maxspeed - minspeed
+        count = 0
+        for i in range(NodeA_num):
+            for j in range(i + 1, NodeB_num):
+                if i != j:
+                    # 给时间赋值，单位：毫秒
+                    self.Speed_list[i][j] = (self.Speed_list[i][j] - minspeed) / mm
+                    self.Speed_list[j][i] = (self.Speed_list[j][i] - minspeed) / mm
+                else:
+                    self.Time_list[j][i] = 0
+                count += 1
+        Node_number_max = 8
+        for i in range(NodeA_num):  # 离心率赋值
+            for j in range(NodeB_num):
+                j_i = abs(j - i)
+                if (j_i < (Node_number_max / 2)):
+                    self.C[i][j] = 1 - j_i / (Node_number_max / 2)
+                elif (j_i > (Node_number_max / 2)):
+                    self.C[i][j] = 1 - (Node_number_max - j_i) / (Node_number_max / 2)
+                elif (j_i == (Node_number_max / 2)):
+                    self.C[i][j] = 0.1
+
+        for i in range(NodeA_num):  # 短轴赋值
+            for j in range(NodeB_num):
+                self.B[i][j] = self.C[i][j] * self.Distance_list[i][j]
+
+    def Shen_updateV(self, file_time_name):
+        # 时间list赋值
+        data_list = readfile(file_time_name)
         # 计算时间补偿
-        count_array = np.array([[0, 1, 1, 0], [1, 0, 2, 1], [1, 2, 2, 1], [2, 1, 3, 2],
-                                [2, 3, 3, 2], [3, 2, 4, 3], [3, 4, 4, 3], [4, 3, 5, 4],
-                                [4, 5, 5, 4], [5, 4, 6, 5], [5, 6, 6, 5], [6, 5, 7, 6],
-                                [6, 7, 7, 6], [7, 6, 0, 7], [7, 0, 0, 7], [0, 7, 1, 0], ], dtype='int')
+        speed_sort = np.zeros(shape=(28), dtype='int')
+        count = 0
+        for i in range(8):
+            for j in range(i + 1, 8):
+                speed_sort[count] = i * 8 + j
+                count += 1
+        sorted_speed = speed_sort[self.Speed_list.reshape(8 * 8)[speed_sort].argsort()]
+        count_num = 13
+        count_array = np.zeros(shape=(count_num, 3), dtype='int')
+        count_array1 = [[0, 0, 7], [1, 0, 1], [2, 2, 3], [3, 3, 4], [4, 4, 5], [5, 5, 6], [6, 6, 7]]
+        for i in range(count_num):
+            count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
         # count_array=np.array([[0,0,7],[1,0,1],[2,2,3],[3,3,4],[4,4,5],[5,5,6],[6,6,7],[7,0,2],
         #                [8,1,3],[9,2,4],[10,3,5],[11,4,6],[12,5,7],[13,0,6]],dtype='int')
+        count_array = np.vstack((count_array1, count_array))
+        for i in range(count_array.shape[0]):
+            count_array[i][0] = i
         arrayl = count_array.shape[0]
-        A = np.zeros(shape=(arrayl, 16))  # 构造系数矩阵 A
+        A = np.zeros(shape=(arrayl, 14))  # 构造系数矩阵 A
         B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
-        count = 0
-        for a in range(count_array.shape[0]):
-            i = count_array[a][0] * 2  # 接收传感器标号 0-15
-            j = count_array[a][1] * 2 + 1  # 发送传感器标号 0-15
-            n = count_array[a][2] * 2  # 接收传感器标号 0-15
-            m = count_array[a][3] * 2 + 1  # 发送传感器标号 0-15
-            print(i, j, n, m)
+        de0 = 1  # 默认接收偏置标号
+        de1 = 4  # 默认发送偏置标号
+        del0 = 1  # 默认接收传感器位置
+        del1 = 2  # 默认发送传感器位置l
+        dij = self.Distance_list[del0][del1]
+        bij = self.bias[del0][del1]
+        tij = self.Time_list[del0][del1]
+        for c, a, b in count_array:
+            # 接收传感器标号
+            if a == 0:
+                n = 0
+            else:
+                n = a * 2 - 1
+                # 发送传感器标号
+            if b == 7:
+                m = 7 * 2 - 1
+            else:
+                m = b * 2
             # ti=t[de0] 要求的系数
             # tj=t[de1] 要求的系数
-            dij = self.Distance_list[count_array[a][0]][count_array[a][1]]
-            tij = self.Time_list[count_array[a][0]][count_array[a][1]]
-            dnm = self.Distance_list[count_array[a][2]][count_array[a][3]]
-            tnm = self.Time_list[count_array[a][2]][count_array[a][3]]
+            dnm = self.Distance_list[a][b]
+            bnm = self.bias[a][b]
+            tnm = self.Time_list[a][b]
             # tn=t[n] 要求的系数
             # tm=t[m] 要求的系数
-            #   d[n][m]*bias2[i][j]*t[i]+d[n][m]*bias2[i][j]*t[j]-
-            #   d[i][j]*bias2[n][m]*t[n]-d[i][j]*bias2[n][m]*t[m]==
-            #   d[n][m]*t[i][j]*bias2[i][j]-d[i][j]*bias2[n][m]*t[n][m]
-            A[count][i] += dnm
-            A[count][j] += dnm
-            A[count][n] -= dij
-            A[count][m] -= dij
-            B[count] = dnm * tij - dij * tnm
-            count += 1
+            #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
+            #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
+            #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
+            A[c][de0] += dnm * bij
+            A[c][de1] += dnm * bij
+            A[c][n] -= dij * bnm
+            A[c][m] -= dij * bnm
+            B[c] = dnm * tij * bij - dij * bnm * tnm
         r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
         print(r[2])
         for i in range(14):
@@ -158,37 +205,22 @@ class Ultrasonic_Line():
                     self.Time_list[j][i] = 0
                 count += 1
         self.Speed_list = np.divide(self.Distance_list, self.Time_list)  # 速度list赋值
-        self.Speed_list = np.divide(self.Speed_list, self.bias2)
-
-        # (Tij-Ti-Tj)/(Tin-Ti-Tn)=Dij/Din
-        # Ti=[Din*(Tij-Tj)-Dij(Tin-Tn)]/(Din-Dij)
-        for i in range(len(self.Speed_list)):
-            for j in range(len(self.Speed_list)):
-                if i == j:
-                    self.Speed_list[i][j] = 0
-
-        Node_number_max = 8
-        for i in range(NodeA_num):  # 离心率赋值
-            for j in range(NodeB_num):
-                j_i = abs(j - i)
-                if (j_i < (Node_number_max / 2)):
-                    self.C[i][j] = 1 - j_i / (Node_number_max / 2)
-                elif (j_i > (Node_number_max / 2)):
-                    self.C[i][j] = 1 - (Node_number_max - j_i) / (Node_number_max / 2)
-                elif (j_i == (Node_number_max / 2)):
-                    self.C[i][j] = 0.1
-
-        for i in range(NodeA_num):  # 短轴赋值
-            for j in range(NodeB_num):
-                self.B[i][j] = self.C[i][j] * self.Distance_list[i][j]
+        self.Speed_list = np.divide(self.Speed_list, self.bias)
 
 
 class RSEN():
     def __init__(self, Line, send, receive, line_minst, Nodelist):
+        """
+        :param Line: 全部射线对象
+        :param send: 发送端
+        :param receive: 接收端
+        :param line_minst: 最短射线的长度
+        :param Nodelist: 传感器坐标集合
+        """
         if send == receive:
             return
         self.num = math.ceil(Line.Distance_list[send][receive] / line_minst * 2)  # 该直线划分成小椭圆的数量
-        self.C = 0.7  # Line.C[send][receive]  # 椭圆离心率
+        self.C = 0.8  # Line.C[send][receive]  # 椭圆离心率
         self.L = Line.Distance_list[send][receive] / self.num / 2  # 长轴长度
         self.B = self.C * self.L  # 短轴长度
         self.cirXY = np.zeros(shape=(self.num, 2))  # 椭圆圆心坐标点
@@ -239,29 +271,42 @@ def ray_ellipse(x0, y0, x1, y1, x2, y2, ea, eb):
 # 例子
 # temp=find_minN(self.Speed_list,2,8,8,1)
 def find_minN(nplist, num, xnum, ynum, thres):
+    relist = nplist.reshape(xnum * ynum)
     # 找出比thres大的下标号
-    temp = np.where(nplist.reshape(xnum * ynum) > thres)[0]
+    temp = np.where(relist > thres)[0]
+    r = relist[temp].argsort()[num]
     # 找出下标号
-    temp = temp[nplist.reshape(xnum * ynum)[temp].argsort()[num]]
+    temp = temp[relist[temp].argsort()[num]]
+    return nplist[int(temp / xnum)][temp % xnum]
+
+
+def find_yuzhi(nplist, num, xnum, ynum):
+    relist = nplist.reshape(xnum * ynum)
+    # 找出比thres大的下标号
+    temp = np.where(relist < 10000)[0]
+    r = relist[temp].argsort()[num]
+    # 找出下标号
+    temp = temp[relist[temp].argsort()[num]]
     return nplist[int(temp / xnum)][temp % xnum]
 
 
 # 网格类
 class Cell():
-    def __init__(self, Node_list_A):
-        self.V = np.zeros(shape=(Cell_Number, Cell_Number))
+    def __init__(self, radiusA, radiusB):
+        self.V = np.ones(shape=(Cell_Number, Cell_Number))
         self.X = np.zeros(shape=(Cell_Number, Cell_Number))
         self.Y = np.zeros(shape=(Cell_Number, Cell_Number))
-        self.inner = np.zeros(shape=(Cell_Number, Cell_Number))
-        cell_length = 30 / Cell_Number
+        self.inner = np.zeros(shape=(Cell_Number, Cell_Number), dtype='bool')  # 是否在园内的标号
+        cell_length = (max(radiusA, radiusB) + 1) * 2 / Cell_Number
         for i in range(Cell_Number):
             self.X[:, i] = (i - Cell_Number / 2) * cell_length
             self.Y[i, :] = -(i - Cell_Number / 2) * cell_length
+
         for i in range(Cell_Number):
             for j in range(Cell_Number):
-                if is_inner(Node_list_A, self.X[i][j], self.Y[i][j]):
-                    self.V[i][j] = 1
-                    self.inner[i][j] = 1
+                # 判断点是否在椭圆内
+                if Ellipse_distance(0, 0, self.X[i][j], self.Y[i][j], radiusA, radiusB):
+                    self.inner[i][j] = True
 
     # 对应力波射线进一步处理后，根据新的小椭圆进行划分
     def update_RV(self, Line_list):
@@ -283,6 +328,52 @@ class Cell():
                 if V_count != 0 and self.inner[i][j]:
                     self.V[i][j] = V_sum / V_count
 
+    def sperate_jianbian(self):
+        """
+        将cell按照0-2进行归一化操作
+        :param yuzhi:
+        """
+        xiabiao = np.where(self.inner.reshape(Cell_Number * Cell_Number) == True)[0]
+        maxspeed = max(self.V.reshape(Cell_Number * Cell_Number)[xiabiao])
+        minspeed = min(self.V.reshape(Cell_Number * Cell_Number)[xiabiao])
+        mm = maxspeed - minspeed
+        bias = 2 / mm
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                if self.inner[i][j] == False:
+                    self.V[i][j] = -0.1
+                    continue
+                self.V[i][j] = (self.V[i][j] - minspeed) * bias
+
+    def sperate(self, yuzhi):
+        """
+        根据阈值进行颜色变换
+        :param yuzhi:
+        """
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                if self.inner[i][j] == False:
+                    self.V[i][j] = yuzhi + 10
+                    continue
+                if self.V[i][j] <= yuzhi - 80:
+                    self.V[i][j] = 0
+
+    def re_label(self, yuzhi):
+        """
+        根据阈值生成label
+        :param yuzhi:
+        """
+        temp = np.zeros(shape=(Cell_Number, Cell_Number))
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                if self.inner[i][j] == False:
+                    continue
+                if self.V[i][j] <= yuzhi:
+                    temp[i][j] = 2
+                else:
+                    temp[i][j] = 1
+        return temp
+
     # 根据原射线形成的椭圆对方块进行划分
     def updata_V(self, Line_list, Node_list_A, Node_list_B):
         for i in range(Cell_Number):
@@ -301,6 +392,56 @@ class Cell():
                 if (V_count != 0 and is_inner(Node_list_A, self.X[i][j], self.Y[i][j])):
                     self.V[i][j] = V_sum / V_count
 
+    # 根据原射线对小格子进行速度估计
+    def updata_UV(self, V_list, Node_list_A, Node_list_B, dis, sort):
+        """
+        :param V_list: 速度矩阵
+        :param Node_list_A: A列传感器位置集合
+        :param Node_list_B: B列传感器位置集合
+        :param dis: cell距离线的最短距离
+        :param sort: 优先选择方式，0：最快，1：最慢，2：距离最近，3：直线的长度最短，其他：平均值
+        """
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                # 判断点是否在园内
+                if not self.inner[i][j]:
+                    continue
+                CX = self.X[i][j]
+                CY = self.Y[i][j]
+                V_sum = 0;
+                V_count = 0;
+                nptemp = [[] for i in range(7)]
+                for n in range(NodeA_num):
+                    for m in range(n + 1, NodeB_num):
+                        distemp = pl_distance(CX, CY, Node_list_A[n].x, Node_list_A[n].y, Node_list_B[m].x,
+                                              Node_list_B[m].y)
+                        if distemp <= dis:
+                            nptemp[0].append(V_list[n][m])  # 第一行放速度
+                            nptemp[1].append(distemp)  # 第二行放距离
+                            nptemp[2].append(Node_list_A[n].x)  # 第三行放射线点1的x坐标
+                            nptemp[3].append(Node_list_A[n].y)  # 第四行放射线点1的y坐标
+                            nptemp[4].append(Node_list_B[m].x)  # 第五行放射线点2的x坐标
+                            nptemp[5].append(Node_list_B[m].y)  # 第六行放射线点2的y坐标
+                            nptemp[6].append(distance(Node_list_A[n], Node_list_B[m]))  # 第七行放射线的长度
+                nptemp = np.array(nptemp)
+                # 如果点受影响且在园内
+                if nptemp[0].shape[0] > 0:
+                    label = 0
+                    if sort == 0:  # 选择速度最小的值
+                        label = nptemp[0].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 1:  # 选择速度最慢的值
+                        label = nptemp[1].argsort()[-1]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 2:  # 选择距离最近的值
+                        label = nptemp[1].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 2:  # 选择直线长度最短的值
+                        label = nptemp[6].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    else:  # 选择平均值
+                        self.V[i][j] = np.mean(nptemp[0])
+
     # 判断点Cell是否在四边形内
     def rect_tangle_distance(self, X, Y):
         temp = False
@@ -311,14 +452,32 @@ class Cell():
         return temp
 
 
-# 判断点Cell是否在椭圆内
-# Circle_X：椭圆圆心X坐标
-# Circle_Y：椭圆圆心Y坐标
-# Cell_X：点Cell的X坐标
-# Cell_Y：点Cell的Y坐标
-# a：椭圆长轴
-# b：椭圆短轴
+# 计算点P到点A，点B形成的直线的距离
+def pl_distance(px, py, ax, ay, bx, by):
+    # 对于两点坐标为同一点时,返回点与点的距离
+    if ax == bx and ay == by:
+        point_array = np.array((px, py))
+        point1_array = np.array((ax, ay))
+        return np.linalg.norm(point_array - point1_array)
+    # 计算直线的三个参数
+    A = by - ay
+    B = ax - bx
+    C = (ay - by) * ax + (bx - ax) * ay
+    # 根据点到直线的距离公式计算距离
+    distance = np.abs(A * px + B * py + C) / (np.sqrt(A ** 2 + B ** 2))
+    return distance
+
+
 def Ellipse_distance(Circle_X, Circle_Y, Cell_X, Cell_Y, a, b):
+    """
+    判断点Cell是否在椭圆内
+    :param Circle_X：椭圆圆心X坐标
+    :param Circle_Y：椭圆圆心Y坐标
+    :param Cell_X：点Cell的X坐标
+    :param Cell_Y：点Cell的Y坐标
+    :param a：椭圆长轴
+    :param b：椭圆短轴
+    """
     if a == 0 or b == 0:
         return 0
     dis = (Circle_X - Cell_X) * (Circle_X - Cell_X) / (a * a) + (Circle_Y - Cell_Y) * (Circle_Y - Cell_Y) / (b * b)
@@ -347,6 +506,7 @@ def is_inner(vertxy, testx, testy):
     return flag;
 
 
+# 计算点X到点Y的距离
 def distance(X, Y):
     return math.sqrt((X.x - Y.x) * (X.x - Y.x) + (X.y - Y.y) * (X.y - Y.y))
 
@@ -378,7 +538,54 @@ def show_plt(list_v, yuzhi, cell_inner):
                 x.append(j)
                 y.append(Cell_Number - i)
     ax.plot(x, y, 'ro')
+    plt.show()
 
+
+def show_heatmap(list_v, agflag):
+    red_thre = 0.15
+    yellow_thre = red_thre * 1.5
+    # 红-黄-绿 无渐变
+    cdict1 = {'red': ((0.0, 1.0, 1.0),
+                      (0.01, 1.0, 1.0),
+                      (yellow_thre, 1.0, 0.0),
+                      (0.99, 0.0, 1.0),
+                      (1, 1.0, 1.0)),
+
+              'green': ((0.0, 1.0, 1.0),
+                        (0.01, 1.0, 0.0),
+                        (red_thre, 0.0, 1.0),
+                        (1, 1.0, 1.0)),
+
+              'blue': ((0.0, 1.0, 1.0),
+                       (0.01, 1.0, 0.0),
+                       (0.99, 0.0, 1.0),
+                       (1, 1.0, 1.0)),
+              }
+    # 红-黄-绿 带渐变
+    cdict = {'red': ((0.0, 1.0, 1.0),
+                     (yellow_thre, 1.0, 1.0),
+                     (0.75, 0.0, 0.0),
+                     (1.0, 1.0, 0.0)),
+
+             'green': ((0.0, 1.0, 0.0),
+                       (red_thre, 1.0, 1.0),
+                       (1.0, 1.0, 0.0)),
+
+             'blue': ((0.0, 1.0, 0.0),
+                      (0.5, 0.0, 0.0),
+                      (0.75, 0.0, 0.0),
+                      (1.0, 1.0, 0.0)),
+             }
+    cmap_name = 'my_list'
+    fig, axs = plt.subplots(figsize=(15, 15))
+    if agflag == 1:
+        fig.suptitle('revised' + 'heatmap', size=50)
+    else:
+        fig.suptitle('heatmap', size=50)
+    blue_red1 = LinearSegmentedColormap(cmap_name, cdict)
+    plt.register_cmap(cmap=blue_red1)
+    im1 = axs.imshow(list_v, cmap=blue_red1)
+    fig.colorbar(im1, ax=axs)  # 在图旁边加上颜色bar
     plt.show()
 
 
@@ -397,17 +604,23 @@ def ultra_ray(Speed_list, Node_list_A, Node_list_B, yuzhi):
     plt.show()
 
 
-def ultra_ellipse(Speed_list, Node_list_A, Node_list_B, 长轴, 短轴, yuzhi):
+def ultra_ellipse(Node_list_A, Node_list_B, 长轴, 短轴):
+    """
+    绘制椭圆
+    :param Speed_list:
+    :param Node_list_A:
+    :param Node_list_B:
+    :param 长轴:
+    :param 短轴:
+    :param yuzhi:
+    """
     fig, ax = plt.subplots()  # 更新
     fig.suptitle(time.strftime("%m%d%H%M%S", time.localtime()) + 'ultra_ellipse')
     plt.xlim(-15, 15)
     plt.ylim(-15, 15)
     for i in range(NodeA_num):
         for j in range(NodeB_num):
-            if (Speed_list[i][j] <= yuzhi):
-                color = 'red'
-            else:
-                color = 'green'
+            color = 'green'
             if j == 2:
                 dx = Node_list_A[i].x - Node_list_B[j].x
                 dy = Node_list_A[i].y - Node_list_B[j].y
@@ -416,6 +629,7 @@ def ultra_ellipse(Speed_list, Node_list_A, Node_list_B, 长轴, 短轴, yuzhi):
                 e = Ellipse(xy=((Node_list_A[i].x + Node_list_B[j].x) / 2, (Node_list_A[i].y + Node_list_B[j].y) / 2),
                             width=长轴[i][j], height=短轴[i][j], angle=angle, facecolor=color, alpha=0.2)
                 ax.add_artist(e)
+                # 增加椭圆
             plt.plot([Node_list_A[i].x, Node_list_B[j].x], [Node_list_A[i].y, Node_list_B[j].y], color=color)
     plt.show()
 
@@ -525,8 +739,74 @@ def speed_cal(Node0, Node1, Node_list):
     return 0.5 / (percentage / Ray_Number)
 
 
-def def_show():
-    file_time_name = r'D://02_soft_temp/py_temp/树莓派数据通信/56-0111-实验室数据/1627树莓派.txt'
+def read_show(filename):
+    a = np.loadtxt(filename, dtype=int)  # 最普通的loadtxt
+    # 红-黄-绿 无渐变
+    cdict = {'red': ((0.0, 0.0, 1.0),
+                     (0.3, 1.0, 0.0),
+                     (0.6, 0.0, 1.0),
+                     (1, 1.0, 1.0)),
+
+             'green': ((0.0, 0.0, 1.0),
+                       (0.3, 1.0, 1.0),
+                       (0.6, 1.0, 0.0),
+                       (1, 0.0, 0.0)),
+
+             'blue': ((0.0, 0.0, 1.0),
+                      (0.3, 1.0, 0.0),
+                      (0.6, 0.0, 0.0),
+                      (1, 0.0, 0.0)),
+             }
+    cmap_name = 'defect'
+    fig, axs = plt.subplots(figsize=(15, 15))
+    blue_red1 = LinearSegmentedColormap(cmap_name, cdict)
+    plt.register_cmap(cmap=blue_red1)
+    im1 = axs.imshow(a, cmap=blue_red1)
+    fig.colorbar(im1, ax=axs)  # 在图旁边加上颜色bar
+    plt.show()
+
+
+def compareAB(list_label, list_test):
+    area_count = 0  # 横截面总数量
+    defect_count = 0  # 缺陷总数量
+    count_inner = 0  # 正确得出的缺陷数量
+    count_out = 0  # 未正确得出的缺陷数量
+    count_wrong = 0  # 错误得出的缺陷数量
+    for i in range(list_label.shape[0]):
+        for j in range(list_label.shape[1]):
+            if list_label[i][j] == 2 or list_label[i][j] == 1:
+                area_count += 1
+            if list_label[i][j] == 2:
+                defect_count += 1
+                if list_test[i][j] == 2:
+                    count_inner += 1
+                else:
+                    count_out += 1
+            elif list_test[i][j] == 2:
+                count_wrong += 1
+    print("总共面积单元：", area_count,
+          "\n缺陷面积单元：", defect_count,
+          "\n计算正确的缺陷面积单元：", count_inner,
+          "\n未计算的缺陷面积单元：", count_out,
+          "\n计算错误的缺陷面积单元：", count_wrong)
+    return area_count, defect_count, count_inner, count_out, count_wrong
+
+
+def read_txt(filename):
+    a = np.loadtxt(filename, dtype=int)  # 最普通的loadtxt
+    return a
+
+
+def def_show(file_time_name):
+    radius = 12  # 检测树木传感器的位置半径
+    Node_location_A = []
+    Node_location_B = []
+    # 根据radius和Node的数量自动计算出坐标赋值
+    # for i in range(NodeA_num):
+    #     Node_location_A.append((radius*math.cos((i*360/NodeA_num-90)/180*math.pi),
+    #                             radius*math.sin((i*360/NodeA_num-90)/180*math.pi)))
+    #     Node_location_B.append((radius*math.cos((i*360/NodeA_num-90)/180*math.pi),
+    #                             radius*math.sin((i*360/NodeA_num-90)/180*math.pi)))
     # 实验室1号树木位置
     # Node_location_A = [(0, -12), (7.354, -7.354), (10.2, 0), (7.2832, 7.2832), (0, 10.2), (-7.071, 7.071), (-10, 0),
     #                    (-7.2832, -7.2832)]
@@ -540,6 +820,7 @@ def def_show():
     #                    (-9.9899, -9.9899)]
     # Node_location_B = [(0, -14), (9.9899, -9.9899), (14, 0), (9.9899, 9.9899), (0, 14), (-9.9899, 9.9899), (-14, 0),
     #                    (-9.9899, -9.9899)]
+    # 根据位置初始化class
     Node_list_A = Node_update(Node_location_A)
     Node_list_B = Node_update(Node_location_B)
     Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, file_time_name)
@@ -547,15 +828,19 @@ def def_show():
     small_ellipse = [[] for i in range(NodeA_num)]
     for i in range(NodeA_num):
         for j in range(NodeB_num):
+            # pass
             small_ellipse[i].append(RSEN(Ultra_Line, i, j, line_minst, Node_list_A))
-    # ultra_ellipse(small_ellipse[0][3].Speed_list, Node_list_A, Node_list_B, 0+.Distance_list, Ultra_Line.B,yuzhi)
-    cell_100 = Cell(Node_list_A)
-    cell_100.update_RV(small_ellipse)
-    yuzhi = find_minN(cell_100.V, 0, Cell_Number, Cell_Number, 1) + 50
-    ultra_ray(Ultra_Line.Speed_list, Node_list_A, Node_list_B, yuzhi)
-    # ultra_ellipse(Ultra_Line.Speed_list, Node_list_A, Node_list_B, Ultra_Line.Distance_list, Ultra_Line.B,yuzhi)
-    show_plt(cell_100.V, yuzhi, cell_100.inner)
+    cell_100 = Cell(10.4, 11.6)
+    cell_100.update_RV(small_ellipse)  # 对应力波射线进一步处理后，根据新的小椭圆进行划分
+    # 最后一个参数A
+    show_heatmap(cell_100.V, 0)  # 显示热力图
 
 
 if __name__ == '__main__':
-    def_show()
+    file_time_name = r'Data2/实验室4号树木/locate1/0126112416树莓派.txt'
+    def_show(file_time_name)
+    # read_show('test1_szh.txt')
+    # label=read_txt('label1.txt')
+    # test=read_txt('test1_szh.txt')
+    #
+    # compareAB(label,test)
