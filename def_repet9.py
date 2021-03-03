@@ -840,18 +840,12 @@ def def_show(file_time_name):
     label = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
     txtfilename = 'test_Data/temp'
     np.savetxt(txtfilename, label, fmt='%d', delimiter=' ')
-    # read_show(txtfilename)#显示刚刚保存的图像
+    read_show(txtfilename)#显示刚刚保存的图像
     # label=read_txt('label_Data/label4.txt')
     # test=read_txt(txtfilename)
     # compareAB(label,test)
 
-
-
-
-
-if __name__ == '__main__':
-    # file_time_name= r'Data2/实验室4号树木/locate1/0126112416树莓派.txt'
-    # def_show(file_time_name)
+def find_better_para():
     label = read_txt('label_Data/label4.txt')
     ospath = 'Data2/实验室4号树木/locate1'
     names = [name for name in os.listdir(ospath)
@@ -864,13 +858,32 @@ if __name__ == '__main__':
         def_show(file_time_name)
         test = read_txt('test_Data/temp')
         area_count, defect_count, count_inner, count_out, count_wrong = compareAB(label, test)
-        if count_inner > temp and count_wrong<defect_count*0.2:
+        if count_inner > temp and count_wrong < defect_count * 0.2:
             temp = count_inner
             filenamtemp = file_time_name
-            print(file_time_name,count_inner,count_wrong)
-
+            print(file_time_name, count_inner, count_wrong)
     print('计算正确数最多为：', temp,
           '\n', file_time_name)
+
+def find_wrong_txt():
+    ospath = 'Data2/实验室4号树木/locate1'
+    names = [name for name in os.listdir(ospath)
+             if os.path.isfile(os.path.join(ospath, name)) and
+             name.endswith('树莓派.txt')]
+    for name in names:
+        filename=ospath + '/' + name
+        data_list = readfile(filename)
+        if data_list.shape[0] !=28:
+            print(filename)
+
+
+
+if __name__ == '__main__':
+    # find_wrong_txt()
+    # find_better_para() #找到最佳参数
+    file_time_name= r'Data2/实验室4号树木/locate1/202101261103树莓派.txt'
+    def_show(file_time_name)
+
     # read_show('test1_szh.txt')
     # label=read_txt('label1.txt')
     # test=read_txt('test1_szh.txt')
