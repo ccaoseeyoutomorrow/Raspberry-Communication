@@ -903,9 +903,9 @@ if __name__ == '__main__':
     file_time_name = r'../Data2/实验室4号树木/locate1/202101261103树莓派.txt'
     # def_show(file_time_name)
 
-    # read_show('test1_szh.txt')
+    read_show('../label_Data/label4_20.txt')
     label=read_txt('../label_Data/label4.txt')
     test=read_txt('../test_Data/test4.txt')
     #
-    compareAB(label,test)
+    # compareAB(label,test)
     # 获取该文件夹下所有文件
