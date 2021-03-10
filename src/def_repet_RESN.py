@@ -1,6 +1,7 @@
 # 缺陷复现
 # 设置时间段为判断依据
 import math
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
@@ -767,11 +768,18 @@ def read_show(filename):
 
 
 def compareAB(list_label, list_test):
+    """
+    定量算法的计算能力
+    :param list_label:标签
+    :param list_test: 算法生成的图像
+    :return:
+    """
     area_count = 0  # 横截面总数量
     defect_count = 0  # 缺陷总数量
-    count_inner = 0  # 正确得出的缺陷数量
-    count_out = 0  # 未正确得出的缺陷数量
-    count_wrong = 0  # 错误得出的缺陷数量
+    TP = 0  # TP-表示该区域被正确地重建为缺陷；
+    FN = 0  # FN-表示该区域被错误地重建为正常木材；
+    FP = 0  # FP-表示该区域被错误地重建为缺陷；
+    TN = 0  # TN-则表示该区域被正确地重建为正常木材
     for i in range(list_label.shape[0]):
         for j in range(list_label.shape[1]):
             if list_label[i][j] == 2 or list_label[i][j] == 1:
@@ -779,17 +787,29 @@ def compareAB(list_label, list_test):
             if list_label[i][j] == 2:
                 defect_count += 1
                 if list_test[i][j] == 2:
-                    count_inner += 1
+                    TP += 1
                 else:
-                    count_out += 1
+                    FN += 1
             elif list_test[i][j] == 2:
-                count_wrong += 1
-    print("总共面积单元：", area_count,
-          "\n缺陷面积单元：", defect_count,
-          "\n计算正确的缺陷面积单元：", count_inner,
-          "\n未计算的缺陷面积单元：", count_out,
-          "\n计算错误的缺陷面积单元：", count_wrong)
-    return area_count, defect_count, count_inner, count_out, count_wrong
+                FP += 1
+            elif list_test[i][j] == 1:
+                TN+=1
+    # 准确度(Accuracy)=(TP+TN)/(TP+TN+FP+FN)
+    # 精度(Precision)=TP/(TP+FP)
+    # 查全率(Recall)=TP/(TP+FN)
+    Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
+    Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
+    Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
+    # print("总共面积单元：",area_count,
+    #       "\n缺陷面积单元：",defect_count,
+    #       "\n计算正确的缺陷面积单元：",TP,
+    #       "\n未计算的缺陷面积单元：",FN,
+    #       "\n计算错误的缺陷面积单元：",FP,
+    #       "\n准确度(Accuracy)：",Accuracy,
+    #       "\n精度(Precision)：",Precision,
+    #       "\n查全率(Recall)：",Recall)
+    return area_count, defect_count, TP, FN, FP
+
 
 
 def read_txt(filename):
@@ -797,7 +817,7 @@ def read_txt(filename):
     return a
 
 
-def def_show(file_time_name):
+def def_show(file_time_name,file_locat_name):
     radius = 12  # 检测树木传感器的位置半径
     Node_location_A = []
     Node_location_B = []
@@ -807,22 +827,17 @@ def def_show(file_time_name):
     #                             radius*math.sin((i*360/NodeA_num-90)/180*math.pi)))
     #     Node_location_B.append((radius*math.cos((i*360/NodeA_num-90)/180*math.pi),
     #                             radius*math.sin((i*360/NodeA_num-90)/180*math.pi)))
-    # 实验室1号树木位置
-    # Node_location_A = [(0, -12), (7.354, -7.354), (10.2, 0), (7.2832, 7.2832), (0, 10.2), (-7.071, 7.071), (-10, 0),
-    #                    (-7.2832, -7.2832)]
-    # Node_location_B = [(0, -12), (7.354, -7.354), (10.2, 0), (7.2832, 7.2832), (0, 10.2), (-7.071, 7.071), (-10, 0),
-    #                    (-7.2832, -7.2832)]
-    # 实验室4号树木位置
-    Node_location_A = [(0, -11.9), (7.5, -7.9), (10.4, 0), (7.5, 8), (0, 11.6), (-7.5, 7.6), (-10.3, 0), (-7.7, -8.6)]
-    Node_location_B = [(0, -11.9), (7.5, -7.9), (10.4, 0), (7.5, 8), (0, 11.6), (-7.5, 7.6), (-10.3, 0), (-7.7, -8.6)]
-    # 江南大学1坐标
-    # Node_location_A = [(0,-14),(9.9899,-9.9899),(14,0),(9.9899,9.9899),(0,14),(-9.9899,9.9899), (-14, 0),
-    #                    (-9.9899, -9.9899)]
-    # Node_location_B = [(0, -14), (9.9899, -9.9899), (14, 0), (9.9899, 9.9899), (0, 14), (-9.9899, 9.9899), (-14, 0),
-    #                    (-9.9899, -9.9899)]
+    locat_list = [[] for i in range(8)]
+    with open(file_locat_name, 'r', encoding='utf-8') as file_to_read:
+        for i in range(8):
+            lines = file_to_read.readline()  # 整行读取数据
+            nums = re.split(',|\n', lines)
+            locat_list[i].append(nums[0])  # 添加新读取的数据
+            locat_list[i].append(nums[1])  # 添加新读取的数据
+    locat_list = np.array(locat_list,dtype='float').reshape(8,2)  # 将数据从list类型转换为array类型。
     # 根据位置初始化class
-    Node_list_A = Node_update(Node_location_A)
-    Node_list_B = Node_update(Node_location_B)
+    Node_list_A = Node_update(locat_list)
+    Node_list_B = Node_update(locat_list)
     Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, file_time_name)
     line_minst = find_minN(Ultra_Line.Distance_list, 0, NodeA_num, NodeB_num, 3)
     small_ellipse = [[] for i in range(NodeA_num)]
@@ -830,15 +845,54 @@ def def_show(file_time_name):
         for j in range(NodeB_num):
             # pass
             small_ellipse[i].append(RSEN(Ultra_Line, i, j, line_minst, Node_list_A))
-    cell_100 = Cell(10.4, 11.6)
+    cell_100 = Cell(10, 10.2)
     cell_100.update_RV(small_ellipse)  # 对应力波射线进一步处理后，根据新的小椭圆进行划分
     # 最后一个参数A
-    show_heatmap(cell_100.V, 0)  # 显示热力图
+    # show_heatmap(cell_100.V, 0)  # 显示热力图
+    max=0
+    tempi=0
+    for i in range(1,50):
+        yuzhi = find_yuzhi(Ultra_Line.Speed_list, -1, NodeA_num, NodeB_num) - i
+        label = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
+        txtfilename = '../test_Data/temp'
+        np.savetxt(txtfilename, label, fmt='%d', delimiter=' ')
+        label=read_txt('../label_Data/label3_20.txt')
+        test=read_txt(txtfilename)
+        area_count, defect_count, TP, FN, FP,TN=compareAB(label,test)
+        if (TP+FP)==0:
+            continue
+        Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
+        Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
+        Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
+        temp=Accuracy+Precision+Recall
+        if temp>max:
+            max=temp
+            tempi=i
+    yuzhi = find_yuzhi(Ultra_Line.Speed_list, -1, NodeA_num, NodeB_num) - tempi
+    label = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
+    txtfilename = '../test_Data/temp'
+    np.savetxt(txtfilename, label, fmt='%d', delimiter=' ')
+    read_show(txtfilename)  # 显示刚刚保存的图像
+    label=read_txt('../label_Data/label3_20.txt')
+    test=read_txt(txtfilename)
+    area_count, defect_count, TP, FN, FP,TN=compareAB(label,test)
+    Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
+    Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
+    Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
+    print("总共面积单元：",area_count,
+          "\n缺陷面积单元：",defect_count,
+          "\n计算正确的缺陷面积单元：",TP,
+          "\n未计算的缺陷面积单元：",FN,
+          "\n计算错误的缺陷面积单元：",FP,
+          "\n准确度(Accuracy)：",Accuracy,
+          "\n精度(Precision)：",Precision,
+          "\n查全率(Recall)：",Recall)
 
 
 if __name__ == '__main__':
-    file_time_name = r'../Data2/实验室4号树木/locate1/0126112416树莓派.txt'
-    def_show(file_time_name)
+    file_time_name = '../Data/实验室4号树木/202101202029树莓派.txt'
+    file_locat_name='../Data/实验室4号树木/location.txt'
+    def_show(file_time_name,file_locat_name)
     # read_show('test1_szh.txt')
     # label=read_txt('label1.txt')
     # test=read_txt('test1_szh.txt')

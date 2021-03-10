@@ -6,6 +6,7 @@
 # 加入热力图
 import math
 import numpy as np
+from def_repet9 import read_show
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from matplotlib.colors import LinearSegmentedColormap
@@ -36,11 +37,11 @@ class Area():
             self.X[:, i] = (i - Cell_Number / 2) * cell_length
             self.Y[i, :] = -(i - Cell_Number / 2) * cell_length
 
-        # for i in range(Cell_Number):
-        #     for j in range(Cell_Number):
-        #         # 判断点是否在椭圆内
-        #         if Ellipse_distance(0,0,self.X[i][j],self.Y[i][j],radiusA,radiusB):
-        #             self.val[i][j]=1
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                # 判断点是否在椭圆内
+                if Ellipse_distance(0,0,self.X[i][j],self.Y[i][j],radiusA,radiusB):
+                    self.val[i][j]=1
 
     def update_circle(self,radX1,radY1,radX2,radY2):
         """
@@ -111,17 +112,17 @@ def is_inner(vertxy,testx,testy):
 
 
 def write_defect():
-    filePath='D:\\02_soft_temp\\py_temp\\树莓派数据通信\\Data2\\实验室4号树木\\'
-    path='D:/02_soft_temp/py_temp/树莓派数据通信/Data2/实验室4号树木/'
-    radiusA=10.3 #检测树木传感器的位置长轴
-    radiusB=11.6 #检测树木传感器的位置短轴
+    radiusA=10 #检测树木传感器的位置长轴
+    radiusB=10.2 #检测树木传感器的位置短轴
     myarea = Area(radiusA,radiusB)
-    radX1=[0,0,8.3]
-    radY1=[-0.8,2.3,0]
-    radX2=[-3.8,-6.4,1.3]
-    radY2=[-7.4,5.9,2.4]
+    radX1=[2]
+    radY1=[-7.5]
+    radX2=[0]
+    radY2=[-0.5]
     myarea.update_circle(radX1,radY1,radX2,radY2)
-    np.savetxt("../label_Data/label4_onlydefect_20.txt", myarea.val,fmt='%d',delimiter=' ')
+    txtfilename="../label_Data/label1_20.txt"
+    np.savetxt(txtfilename, myarea.val,fmt='%d',delimiter=' ')
+    read_show(txtfilename)  # 显示刚刚保存的图像
     print(myarea.val)
 
 if __name__ == '__main__':
