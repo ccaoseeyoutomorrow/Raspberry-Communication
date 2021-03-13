@@ -797,9 +797,9 @@ def compareAB(list_label, list_test):
     # 准确度(Accuracy)=(TP+TN)/(TP+TN+FP+FN)
     # 精度(Precision)=TP/(TP+FP)
     # 查全率(Recall)=TP/(TP+FN)
-    Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
-    Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
-    Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
+    # Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
+    # Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
+    # Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
     # print("总共面积单元：",area_count,
     #       "\n缺陷面积单元：",defect_count,
     #       "\n计算正确的缺陷面积单元：",TP,
@@ -808,7 +808,7 @@ def compareAB(list_label, list_test):
     #       "\n准确度(Accuracy)：",Accuracy,
     #       "\n精度(Precision)：",Precision,
     #       "\n查全率(Recall)：",Recall)
-    return area_count, defect_count, TP, FN, FP
+    return area_count, defect_count, TP, FN, FP,TN
 
 
 
@@ -818,15 +818,7 @@ def read_txt(filename):
 
 
 def def_show(file_time_name,file_locat_name):
-    radius = 12  # 检测树木传感器的位置半径
-    Node_location_A = []
-    Node_location_B = []
-    # 根据radius和Node的数量自动计算出坐标赋值
-    # for i in range(NodeA_num):
-    #     Node_location_A.append((radius*math.cos((i*360/NodeA_num-90)/180*math.pi),
-    #                             radius*math.sin((i*360/NodeA_num-90)/180*math.pi)))
-    #     Node_location_B.append((radius*math.cos((i*360/NodeA_num-90)/180*math.pi),
-    #                             radius*math.sin((i*360/NodeA_num-90)/180*math.pi)))
+    label=read_txt('../label_Data/label4_20.txt')
     locat_list = [[] for i in range(8)]
     with open(file_locat_name, 'r', encoding='utf-8') as file_to_read:
         for i in range(8):
@@ -845,19 +837,16 @@ def def_show(file_time_name,file_locat_name):
         for j in range(NodeB_num):
             # pass
             small_ellipse[i].append(RSEN(Ultra_Line, i, j, line_minst, Node_list_A))
-    cell_100 = Cell(10, 10.2)
+    cell_100 = Cell(10.3, 11.6)
     cell_100.update_RV(small_ellipse)  # 对应力波射线进一步处理后，根据新的小椭圆进行划分
     # 最后一个参数A
-    # show_heatmap(cell_100.V, 0)  # 显示热力图
     max=0
-    tempi=0
-    for i in range(1,50):
-        yuzhi = find_yuzhi(Ultra_Line.Speed_list, -1, NodeA_num, NodeB_num) - i
-        label = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
+    tempyuzhi=0
+    for i in range(1,100):
+        yuzhi = float(i/100)
+        test = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
         txtfilename = '../test_Data/temp'
-        np.savetxt(txtfilename, label, fmt='%d', delimiter=' ')
-        label=read_txt('../label_Data/label3_20.txt')
-        test=read_txt(txtfilename)
+        np.savetxt(txtfilename, test, fmt='%d', delimiter=' ')
         area_count, defect_count, TP, FN, FP,TN=compareAB(label,test)
         if (TP+FP)==0:
             continue
@@ -867,14 +856,13 @@ def def_show(file_time_name,file_locat_name):
         temp=Accuracy+Precision+Recall
         if temp>max:
             max=temp
-            tempi=i
-    yuzhi = find_yuzhi(Ultra_Line.Speed_list, -1, NodeA_num, NodeB_num) - tempi
-    label = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
+            tempyuzhi=yuzhi
+    yuzhi = tempyuzhi
+    print(yuzhi)
+    test = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
     txtfilename = '../test_Data/temp'
-    np.savetxt(txtfilename, label, fmt='%d', delimiter=' ')
+    np.savetxt(txtfilename, test, fmt='%d', delimiter=' ')
     read_show(txtfilename)  # 显示刚刚保存的图像
-    label=read_txt('../label_Data/label3_20.txt')
-    test=read_txt(txtfilename)
     area_count, defect_count, TP, FN, FP,TN=compareAB(label,test)
     Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
     Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
