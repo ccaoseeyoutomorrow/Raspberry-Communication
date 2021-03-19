@@ -58,7 +58,7 @@ def write_x():
             data_list = np.concatenate((data_list, locat_list), axis=0)
             outcome.append(data_list)
     outcome = np.array(outcome).reshape(-1, 44)
-    np.save('../label_Data/4号树木x.npy', outcome)
+    np.save('../Data/label_Data/4号树木x.npy', outcome)
 
 def write_y():
     """
@@ -100,6 +100,24 @@ def write_test_x():
     np.save('../Defect_Data/3号树木x.npy', outcome)
     pass
 
+def write_only_time(osname):
+    """
+    编写1-3号树木的输入x信息，秩序改写osname和np.save的文件名
+    """
+
+    filenames = [name for name in os.listdir(osname)
+                 if os.path.isfile(os.path.join(osname, name)) and
+                 (name.endswith('树莓派.txt') or
+                  name.startswith('20') or
+                  name.startswith('手按'))]
+    for i in range(len(filenames)):
+        filenames[i] = osname + filenames[i]
+    outcome=[]
+    for i in range(len(filenames)):
+        data_list = readfile(filenames[i])
+        outcome.append(data_list)
+    outcome = np.array(outcome).reshape(-1, 28)
+    np.save('../Data3/Data_npy/实验室2号树木/2号树木501x28.npy', outcome)
 
 def find_wrong_x():
     """
@@ -139,4 +157,4 @@ def find_wrong_x():
             outcome.append(data_list)
 
 if __name__ == '__main__':
-    write_x()
+    write_only_time(osname = '../Data3/Data_file/实验室2号树木/')

@@ -13,7 +13,7 @@ server_receive.bind(ip_port)
 # listen监听
 server_receive.listen(10)
 
-count=234
+count=0
 while True:
     # 建立客户端链接
     # accept 接受请求链接
@@ -31,12 +31,13 @@ while True:
             print("数据错误")
             break
         nowtime=time.strftime("%m%d%H%M%S", time.localtime())
-        filename='../Data2/实验室3号树木/locate8/'+nowtime+'树莓派.txt'
-        record_file = open(filename, 'w')
+        filename= '../Data3/Data_file/实验室2号树木/'
+        record_file = open(filename+nowtime+'树莓派.txt', 'w')
         temp=str(data, encoding="utf-8")
         if temp!='\n':
             record_file.write(str(data, encoding="utf-8")+'\n')
         record_file.close()
+        # show9(filename,'../Data2/实验室1号树木/location.txt')
         print(str(data, encoding="utf-8")+'\n')
         print(count)
         count+=1

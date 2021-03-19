@@ -7,7 +7,7 @@ from matplotlib.patches import Ellipse
 from matplotlib.colors import LinearSegmentedColormap
 from numpy.linalg import lstsq
 
-Cell_Number = 100
+Cell_Number = 20
 Ray_Number = 100
 NodeA_num = 8  # 节点数量
 NodeB_num = 8
@@ -966,12 +966,20 @@ def mydefect(locat_list, Time_data, label):
     x, y = get_XY_length(locat_list)
     cell_100 = Cell(x, y)
     cell_100.updata_UV(Ultra_Line.Speed_list, Node_list_A, Node_list_B, 2, 4)  # 根据原射线对小格子进行速度估计
-    show_heatmap(cell_100.V)  # 显示热力图
+    # show_heatmap(cell_100.V)  # 显示热力图
     txtfilename = '../test_Data/temp'
-    test = cell_100.re_label(Ultra_Line.yuzhip)  # 根据输入的阈值分成绿红两部分
-    np.savetxt(txtfilename, test, fmt='%d', delimiter=' ')
+    bestyuzhi=0
+    bestaccuracy=0
+    for i in range(1000):
+        yuzhitemp=i/1000
+        test = cell_100.re_label(yuzhitemp)  # 根据输入的阈值分成绿红两部分
+        area_count, defect_count, TP, FN, FP, TN = compareAB(label, test)
+        Accuracy = (TP + TN) / (TP + TN + FP + FN)  # 正确的重建除以总面积
+        if Accuracy>bestaccuracy:
+            bestaccuracy=Accuracy
+            bestyuzhi=yuzhitemp
+    test = cell_100.re_label(bestyuzhi)  # 根据输入的阈值分成绿红两部分
     area_count, defect_count, TP, FN, FP, TN = compareAB(label, test)
-    # read_show(txtfilename)
     try:
         Accuracy = (TP + TN) / (TP + TN + FP + FN)  # 正确的重建除以总面积
         Precision = TP / (TP + FP)  # 正确的缺陷重建除以算法总缺陷重建
@@ -979,8 +987,11 @@ def mydefect(locat_list, Time_data, label):
         print("Mydefect准确度(Accuracy)：", '%.4f' %Accuracy,
               "Mydefect精度(Precision)：", '%.4f' %Precision,
               "Mydefect查全率(Recall)：", '%.4f' %Recall)
+        return Accuracy
     except:
         pass
+    return 0
+
 
 
 def RESN_defect(locat_list, Time_data, label):
@@ -997,7 +1008,7 @@ def RESN_defect(locat_list, Time_data, label):
     x, y = get_XY_length(locat_list)
     cell_100 = Cell(x, y)
     cell_100.update_RV(small_ellipse)  # 对应力波射线进一步处理后，根据新的小椭圆进行划分
-    show_heatmap(cell_100.V)  # 显示热力图
+    # show_heatmap(cell_100.V)  # 显示热力图
     txtfilename = '../test_Data/temp'
     test = cell_100.re_label(Ultra_Line.yuzhip)  # 根据输入的阈值分成绿红两部分
     np.savetxt(txtfilename, test, fmt='%d', delimiter=' ')
@@ -1018,15 +1029,17 @@ def show_npy(filename, labelname):
     label = read_txt(labelname)
     data = np.load(filename)
     data = np.array(data, dtype='float')
-    index = [i for i in range(data.shape[0])]
-    np.random.shuffle(index)
-    data = data[index]
+    # index = [i for i in range(data.shape[0])]
+    # np.random.shuffle(index)
+    # data = data[index]
 
     for i in range(data.shape[0]):
         locat_list = np.array(data[i][28:44], dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
         Time_data = np.array(data[i][0:28], dtype='float')
         # 根据位置初始化class
-        mydefect(locat_list, Time_data, label)
+        accuracy=mydefect(locat_list, Time_data, label)
+        if accuracy<0.5:
+            print(i)
         RESN_defect(locat_list, Time_data, label)
 
 
@@ -1046,5 +1059,5 @@ def get_XY_length(locat_list):
 
 if __name__ == '__main__':
     npy_name = '../label_Data/3号树木x_median.npy'
-    label_name = '../label_Data/label3.txt'
+    label_name = '../label_Data/label3_20.txt'
     show_npy(npy_name, label_name)

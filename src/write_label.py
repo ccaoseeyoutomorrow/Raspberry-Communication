@@ -29,7 +29,7 @@ class Node():  # 存放传感器位置
 #网格类
 class Area():
     def __init__(self,radiusA,radiusB):
-        self.val=np.ones(shape=(Cell_Number, Cell_Number),dtype='float')
+        self.val=np.zeros(shape=(Cell_Number, Cell_Number),dtype='float')
         self.X=np.zeros(shape=(Cell_Number, Cell_Number))
         self.Y=np.zeros(shape=(Cell_Number, Cell_Number))
         cell_length = (max(radiusA,radiusB)+1)*2/Cell_Number
@@ -60,7 +60,7 @@ class Area():
             for i in range(Cell_Number):
                 for j in range(Cell_Number):
                     if  Ellipse_distance(XC,YC,self.X[i][j],self.Y[i][j],radius,radius): #如果在缺陷内
-                        self.val[i][j]=0   #缺陷的值设为0，即速度最低
+                        self.val[i][j]=2   #缺陷的值设为0，即速度最低
 
     def update_polygon(self,radxys):
         """
@@ -112,16 +112,15 @@ def is_inner(vertxy,testx,testy):
 
 
 def write_defect():
-    radiusA=10.3 #检测树木传感器的位置长轴
-    radiusB=11.6 #检测树木传感器的位置短轴
+    radiusA=10.82 #检测树木传感器的位置长轴
+    radiusB=10.82 #检测树木传感器的位置短轴
     myarea = Area(radiusA,radiusB)
-    radX1=[0,0,8.3]
-    radY1=[-0.8,2.3,0]
-    radX2=[-3.8,-6.4,1.3]
-    radY2=[-7.4,5.9,2.4]
+    radX1=[-5.5]
+    radY1=[0]
+    radX2=[3.5]
+    radY2=[0]
     myarea.update_circle(radX1,radY1,radX2,radY2)
-    txtfilename="../label_Data/label4_20_0-1.txt"
-    np.savetxt(txtfilename, myarea.val,fmt='%d',delimiter=' ')
+    np.savetxt('../Data3/label/label2_20.txt', myarea.val,fmt='%d',delimiter=' ')
     read_show(myarea.val)  # 显示刚刚保存的图像
     print(myarea.val)
 
