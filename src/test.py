@@ -1,32 +1,22 @@
-from math import pi,cos
-import math,time
+import requests
+import json,time
 import numpy as np
-import matplotlib.pyplot as plt
 
-fig, ax = plt.subplots()  # 更新
-# x=[]
-# y1=[]
-# y2=[]
-# y3=[]
-# H=np.random.uniform(10e-16,10e-1,size=50)
-# H=np.sort(H)
-# for h in H:
-#     df1=(cos(1+h)-cos(1))/h
-#     df2=(cos(1-h)-cos(1))/h
-#     df3=(cos(1+h)-cos(1-h))/(2*h)
-#     x.append(h)
-#     y1.append(df1)
-#     y2.append(df2)
-#     y3.append(df3)
-#
-# ax.plot(x, y1, 'go')
-# ax.plot(x, y2, 'ro')
-# ax.plot(x, y3, 'yo')
-# plt.show()
+def generate(n):
+    n=int(n)
+    nn=int(pow(n,n))
+    nnstr=np.zeros(shape=(nn,n),dtype='int')
+    for j in range(n):
+        tempnn=int(pow(n,n-j-1))
+        count=0
+        while nnstr[-1,j]==0:
+            for i in range(n):
+                nnstr[i*tempnn+count:i*tempnn+tempnn+count,j]=i+1
+            count+=n*tempnn
+    print(nnstr)
 
 
-temp='0.06634674072265623\n0.11212310791015623\n0.18770179748535154\n0.3443428039550781\n0.1600452423095703\n0.16147575378417967\n0.10163269042968748\n0.09972534179687498\n0.13811073303222654\n0.2947517395019531\n0.29761276245117185\n0.23467025756835935\n0.20820579528808592\n0.10354003906249998\n0.17435035705566404\n0.37915191650390623\n0.3119178771972656\n0.25183639526367185\n0.16338310241699217\n0.2527900695800781\n0.4733272552490234\n0.5779930114746095\n0.12046775817871092\n0.2859302520751953\n0.31930885314941404\n0.13358078002929685\n0.23848495483398435\n0.13215026855468748\n'
-temp=temp.split('\n')
-temp=np.array(temp)
-for i in temp:
-    print(i)
+
+temp=1
+
+np.savetxt('yuzhi.txt', np.array([temp]), fmt='%d')

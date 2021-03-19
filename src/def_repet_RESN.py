@@ -9,7 +9,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import time
 from numpy.linalg import lstsq
 
-Cell_Number = 20
+Cell_Number = 100
 Ray_Number = 100
 NodeA_num = 8  # 节点数量
 NodeB_num = 8
@@ -816,6 +816,31 @@ def read_txt(filename):
     a = np.loadtxt(filename, dtype=int)  # 最普通的loadtxt
     return a
 
+def get_locationbyradius(a, b):
+    """
+    返回由a，b生成的list位置
+    :param a: 椭圆长轴长度
+    :param b: 椭圆短轴长度
+    """
+    locat_list = [[] for i in range(NodeA_num)]
+    for i in range(NodeA_num):
+
+        θ = i * 360 / NodeA_num - 90
+        if θ == -90 or θ == 90:
+            xtemp = 0
+            ytemp = θ/90*b
+        elif θ == 0 or θ == 180:
+            xtemp = -(θ-90)/90*a
+            ytemp = 0
+        else:
+            θ=θ/180*math.pi
+            temp=math.tan(θ)
+            xtemp = a*math.cos(θ)
+            ytemp = b * math.sin(θ)
+        locat_list[i].append(xtemp)
+        locat_list[i].append(ytemp)
+    locat_list = np.array(locat_list, dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
+    return locat_list
 
 def def_show(file_time_name,file_locat_name):
     label=read_txt('../label_Data/label4_20.txt')
@@ -876,11 +901,41 @@ def def_show(file_time_name,file_locat_name):
           "\n精度(Precision)：",Precision,
           "\n查全率(Recall)：",Recall)
 
+def get_XY_length(locat_list):
+    list1 = [0, 4]
+    list2 = [2, 6]
+    list_x = locat_list[list2, :1]
+    list_y = locat_list[list1, 1:2]
+    list_x = np.maximum(list_x, -list_x)
+    list_y = np.maximum(list_y, -list_y)
+    minx = np.min(list_x)
+    miny = np.min(list_y)
+    return minx, miny
+
+def defshow_heatmap(file_time_name,length):
+    radius = length / 2 / math.pi  # 检测树木传感器的位置半径
+    # 根据radius和Node的数量自动计算出坐标赋值
+    locat_list = get_locationbyradius(radius, radius)
+    # 根据位置初始化class
+    Node_list_A = Node_update(locat_list)
+    Node_list_B = Node_update(locat_list)
+    Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, file_time_name)
+    line_minst = find_minN(Ultra_Line.Distance_list, 0, NodeA_num, NodeB_num, 3)
+    small_ellipse = [[] for i in range(NodeA_num)]
+    for i in range(NodeA_num):
+        for j in range(NodeB_num):
+            # pass
+            small_ellipse[i].append(RSEN(Ultra_Line, i, j, line_minst, Node_list_A))
+    x, y = get_XY_length(locat_list)
+    cell_100 = Cell(x, y)
+    cell_100.update_RV(small_ellipse)  # 对应力波射线进一步处理后，根据新的小椭圆进行划分
+    show_heatmap(cell_100.V, 0)  # 显示热力图
 
 if __name__ == '__main__':
-    file_time_name = '../Data/实验室4号树木/202101202029树莓派.txt'
-    file_locat_name='../Data/实验室4号树木/location.txt'
-    def_show(file_time_name,file_locat_name)
+    file_time_name = '../Data/实验室3号树木/202101201929树莓派.txt'
+    file_locat_name='../Data/实验室3号树木/location.txt'
+    # def_show(file_time_name,file_locat_name)
+    defshow_heatmap(file_time_name,68)
     # read_show('test1_szh.txt')
     # label=read_txt('label1.txt')
     # test=read_txt('test1_szh.txt')

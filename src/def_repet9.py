@@ -1,15 +1,14 @@
 # 缺陷复现
 # 设置时间段为判断依据
-import math, os, os.path
+import math, os, os.path,time,re
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from matplotlib.colors import LinearSegmentedColormap
-import time
 from numpy.linalg import lstsq
-import re
 
-Cell_Number = 20
+
+Cell_Number = 100
 Ray_Number = 100
 NodeA_num = 8  # 节点数量
 NodeB_num = 8
@@ -57,7 +56,7 @@ def readfile(filename):
 
 # 超声波射线类，存超声波射线的传播时间、传播距离、速度等
 class Ultrasonic_Line():
-    def __init__(self, Node_list_R, Node_list_T, file_time_name, agflag):
+    def __init__(self, Node_list_R, Node_list_T, Time_data):
         self.C = np.zeros(shape=(NodeA_num, NodeB_num))  # 类似离心率
         self.B = np.zeros(shape=(NodeA_num, NodeB_num))  # 短轴
         self.Time_list = np.zeros(shape=(NodeA_num, NodeB_num))
@@ -77,7 +76,7 @@ class Ultrasonic_Line():
                     self.Distance_list[i][j] = 0
 
         # 时间list赋值
-        data_list = readfile(file_time_name)
+        data_list = Time_data
         count = 0
         for i in range(NodeA_num):
             for j in range(i + 1, NodeB_num):
@@ -98,8 +97,7 @@ class Ultrasonic_Line():
         self.Speed_list = np.divide(self.Speed_list, self.bias)
 
         # 根据无损区域的速度，来更新时间误差
-        if agflag == 1:
-            self.Shen_updateV(file_time_name)
+        self.Shen_updateV(Time_data)
 
         # 速度归一化操作
         # 找出比thres大的下标号
@@ -110,6 +108,9 @@ class Ultrasonic_Line():
         maxspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[maxlabel]
         minspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[mixlabel]
         mm = maxspeed - minspeed
+        self.maxspeed=maxspeed
+        self.minspeed=minspeed
+        self.mm=mm
         count = 0
         for i in range(NodeA_num):
             for j in range(i + 1, NodeB_num):
@@ -135,13 +136,13 @@ class Ultrasonic_Line():
             for j in range(NodeB_num):
                 self.B[i][j] = self.C[i][j] * self.Distance_list[i][j]
 
-    def Shen_updateV(self, file_time_name):
+    def Shen_updateV(self, Time_data):
         """
         速度误差校正
         :param file_time_name:
         """
         # 时间list赋值
-        data_list = readfile(file_time_name)
+        data_list = Time_data
         # 计算时间补偿
         speed_sort = np.zeros(shape=(28), dtype='int')
         count = 0
@@ -335,7 +336,7 @@ def find_yuzhi(nplist, num, xnum, ynum):
 # 网格类
 class Cell():
     def __init__(self, radiusA, radiusB):
-        self.V = np.zeros(shape=(Cell_Number, Cell_Number))
+        self.V = np.ones(shape=(Cell_Number, Cell_Number))
         self.X = np.zeros(shape=(Cell_Number, Cell_Number))
         self.Y = np.zeros(shape=(Cell_Number, Cell_Number))
         self.inner = np.zeros(shape=(Cell_Number, Cell_Number), dtype='bool')  # 是否在园内的标号
@@ -614,13 +615,13 @@ def show_plt(list_v, yuzhi, cell_inner):
     plt.show()
 
 
-def show_heatmap(list_v, agflag):
+def show_heatmap(list_v):
     """
     显示list_v的热力图
     :param list_v:
     :param agflag:
     """
-    red_thre = 0.15
+    red_thre = 0.29
     yellow_thre = red_thre * 1.5
     # 红-黄-绿 无渐变
     cdict1 = {'red': ((0.0, 1.0, 1.0),
@@ -659,10 +660,7 @@ def show_heatmap(list_v, agflag):
              }
     cmap_name = 'my_list'
     fig, axs = plt.subplots(figsize=(15, 15))
-    if agflag == 1:
-        fig.suptitle('revised' + 'heatmap', size=50)
-    else:
-        fig.suptitle('heatmap', size=50)
+    fig.suptitle('heatmap', size=50)
     blue_red1 = LinearSegmentedColormap(cmap_name, cdict)
     plt.register_cmap(cmap=blue_red1)
     im1 = axs.imshow(list_v, cmap=blue_red1)
@@ -859,12 +857,12 @@ def speed_cal(Node0, Node1, Node_list):
     return 0.5 / (percentage / Ray_Number)
 
 
-def read_show(filename):
+def read_show(data):
     """
     读取缺陷文件txt并显示
     :param filename:
     """
-    a = np.loadtxt(filename, dtype=int)  # 最普通的loadtxt
+    a = data  # 最普通的loadtxt
     # 红-黄-绿 无渐变
     cdict = {'red': ((0.0, 0.0, 1.0),
                      (0.3, 1.0, 0.0),
@@ -940,7 +938,7 @@ def read_txt(filename):
     :param filename:
     :return:
     """
-    a = np.loadtxt(filename, dtype=int)  # 最普通的loadtxt
+    a = np.loadtxt(filename, dtype=float)  # 最普通的loadtxt
     return a
 
 
@@ -970,7 +968,6 @@ def get_locationbyradius(a, b):
 
 
 def def_show(file_time_name, file_locat_name):
-    agflag = 1
     # radius = 12  # 检测树木传感器的位置半径
     locat_list = [[] for i in range(8)]
     with open(file_locat_name, 'r', encoding='utf-8') as file_to_read:
@@ -985,14 +982,15 @@ def def_show(file_time_name, file_locat_name):
     # 根据位置初始化class
     Node_list_A = Node_update(locat_list)
     Node_list_B = Node_update(locat_list)
-    Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, file_time_name, agflag)
+    Data_time=readfile(file_time_name)
+    Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, Data_time)
 
     # line_minst = find_minN(Ultra_Line.Distance_list, 0, NodeA_num, NodeB_num, 3)
     # small_ellipse = [[] for i in range(NodeA_num)]
     # for i in range(NodeA_num):
     #     for j in range(NodeB_num):
     #         small_ellipse[i].append(RSEN(Ultra_Line,i,j,line_minst,Node_list_A))
-    x, y = get_XY_length(file_locat_name)
+    x, y = get_XY_length(locat_list)
     cell_100 = Cell(x, y)
     # cell_100.update_RV(small_ellipse) #对应力波射线进一步处理后，根据新的小椭圆进行划分
     # 最后一个参数A
@@ -1000,6 +998,7 @@ def def_show(file_time_name, file_locat_name):
     # show_plt(cell_100.V,yuzhi,cell_100.inner)
     # cell_100.sperate(yuzhi)
     # cell_100.sperate_jianbian() #将cell按照0-2进行归一化操作
+    show_heatmap(cell_100.V)
     max = 0
     tempi = 0
     for i in range(1, 60):
@@ -1026,18 +1025,18 @@ def def_show(file_time_name, file_locat_name):
     # read_show(txtfilename)  # 显示刚刚保存的图像
     label = read_txt('../label_Data/label4_20.txt')
     test = read_txt(txtfilename)
-    area_count, defect_count, TP, FN, FP, TN = compareAB(label, test)
-    Accuracy = (TP + TN) / (TP + TN + FP + FN)  # 正确的重建除以总面积
-    Precision = TP / (TP + FP)  # 正确的缺陷重建除以算法总缺陷重建
-    Recall = TP / (TP + FN)  # 正确的缺陷重建除以真是总缺陷面积
-    print("总共面积单元：", area_count,
-          "\n缺陷面积单元：", defect_count,
-          "\n计算正确的缺陷面积单元：", TP,
-          "\n未计算的缺陷面积单元：", FN,
-          "\n计算错误的缺陷面积单元：", FP,
-          "\n准确度(Accuracy)：", Accuracy,
-          "\n精度(Precision)：", Precision,
-          "\n查全率(Recall)：", Recall)
+    # area_count, defect_count, TP, FN, FP, TN = compareAB(label, test)
+    # Accuracy = (TP + TN) / (TP + TN + FP + FN)  # 正确的重建除以总面积
+    # Precision = TP / (TP + FP)  # 正确的缺陷重建除以算法总缺陷重建
+    # Recall = TP / (TP + FN)  # 正确的缺陷重建除以真是总缺陷面积
+    # print("总共面积单元：", area_count,
+    #       "\n缺陷面积单元：", defect_count,
+    #       "\n计算正确的缺陷面积单元：", TP,
+    #       "\n未计算的缺陷面积单元：", FN,
+    #       "\n计算错误的缺陷面积单元：", FP,
+    #       "\n准确度(Accuracy)：", Accuracy,
+    #       "\n精度(Precision)：", Precision,
+    #       "\n查全率(Recall)：", Recall)
     # show_heatmap(cell_100.V, 0)  # 显示热力图
     return tempi
 
@@ -1100,73 +1099,77 @@ def show_npy(filename, labelname):
     label = read_txt(labelname)
     data = np.load(filename)
     data = np.array(data, dtype='float')
-    sumi = 0
-    counti = 0
-    agflag = 1
+    index = [i for i in range(data.shape[0])]
+    np.random.shuffle(index)
+    data=data[index]
+    Ab=2.0
+    Pb=1.0
+    Rb=1.0
+    countp=0
+    sump=0
     for i in range(data.shape[0]):
         locat_list = np.array(data[i][28:44], dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
         # 根据位置初始化class
         Node_list_A = Node_update(locat_list)
-        Node_list_B = Node_update(locat_list)
-        Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, file_time_name, agflag)
-        cell_100 = Cell(10.3, 11.6)
+        Node_list_B = Node_list_A
+        Time_data = np.array(data[i][0:28], dtype='float')
+        Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, Time_data)
+        x,y=get_XY_length(locat_list)
+        cell_100 = Cell(x, y)
         cell_100.updata_UV(Ultra_Line.Speed_list, Node_list_A, Node_list_B, 2, 4)  # 根据原射线对小格子进行速度估计
-        max = 0
-        tempyuzhi = 0
-        txtfilename = '../test_Data/temp'
-        for i in range(1, 100):
-            yuzhi = float(i / 100)
-            test = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
-            np.savetxt(txtfilename, test, fmt='%d', delimiter=' ')
-            area_count, defect_count, TP, FN, FP, TN = compareAB(label, test)
-            if (TP + FP) == 0:
-                continue
-            Accuracy = (TP + TN) / (TP + TN + FP + FN)  # 正确的重建除以总面积
-            Precision = TP / (TP + FP)  # 正确的缺陷重建除以算法总缺陷重建
-            Recall = TP / (TP + FN)  # 正确的缺陷重建除以真是总缺陷面积
-            temp = Accuracy + Precision + Recall
-            if temp > max:
-                max = temp
-                tempyuzhi = yuzhi
-        sumi += tempyuzhi
-        counti += 1
-        print(tempyuzhi)
-        # yuzhi = find_yuzhi(Ultra_Line.Speed_list, -1, NodeA_num, NodeB_num) - tempi
-        # test = cell_100.re_label(yuzhi)  # 根据输入的阈值分成绿红两部分
-        # np.savetxt(txtfilename, test, fmt='%d', delimiter=' ')
-        # area_count, defect_count, TP, FN, FP,TN=compareAB(label,test)
-        # Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
-        # Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
-        # Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
-        # print("总共面积单元：",area_count,
-        #   "\n缺陷面积单元：",defect_count,
-        #   "\n计算正确的缺陷面积单元：",TP,
-        #   "\n未计算的缺陷面积单元：",FN,
-        #   "\n计算错误的缺陷面积单元：",FP,
-        #   "\n准确度(Accuracy)：",Accuracy,
-        #   "\n精度(Precision)：",Precision,
-        #   "\n查全率(Recall)：",Recall)
+        # show_heatmap(cell_100.V)  # 显示热力图
+        tempyuzhi=0
+        tempaccuracy=0
+        for i in range(1,99,2):
+            yuzhitemp=i/100
+            test = cell_100.re_label(yuzhitemp)  # 根据输入的阈值分成绿红两部分
+            area_count, defect_count, TP, FN, FP,TN=compareAB(label,test)
+            try:
+                Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
+                Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
+                Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
+                flag=(Accuracy*Ab+Precision*Pb+Recall*Rb)/(Ab+Pb+Rb)
+                if flag>tempaccuracy:
+                    tempyuzhi=yuzhitemp
+                    tempaccuracy=flag
+            except:
+                pass
+        temp=(tempyuzhi*Ultra_Line.mm+Ultra_Line.minspeed)/Ultra_Line.maxspeed
+        countp+=1
+        sump+=tempyuzhi
+        print(tempyuzhi,'%.4f' %tempaccuracy,
+              '%.4f' %temp)
+        test = cell_100.re_label(tempyuzhi)  # 根据输入的阈值分成绿红两部分
+        # read_show(test)
+        # try:
+        #     Accuracy=(TP+TN)/(TP+TN+FP+FN)#正确的重建除以总面积
+        #     Precision=TP/(TP+FP)#正确的缺陷重建除以算法总缺陷重建
+        #     Recall=TP/(TP+FN)#正确的缺陷重建除以真是总缺陷面积
+        #     print("总共面积单元：",area_count,
+        #       "\n缺陷面积单元：",defect_count,
+        #       "\n计算正确的缺陷面积单元：",TP,
+        #       "\n未计算的缺陷面积单元：",FN,
+        #       "\n计算错误的缺陷面积单元：",FP,
+        #       "\n准确度(Accuracy)：",Accuracy,
+        #       "\n精度(Precision)：",Precision,
+        #       "\n查全率(Recall)：",Recall)
+        # except:
+        #     pass
         # read_show(txtfilename)  # 显示热力图
-    return sumi / counti
+    return sump/countp
 
 
-def get_XY_length(file_locat_name):
-    locat_list = [[] for i in range(8)]
-    with open(file_locat_name, 'r', encoding='utf-8') as file_to_read:
-        for i in range(8):
-            lines = file_to_read.readline()  # 整行读取数据
-            nums = re.split(',|\n', lines)
-            locat_list[i].append(nums[0])  # 添加新读取的数据
-            locat_list[i].append(nums[1])  # 添加新读取的数据
-    locat_list = np.array(locat_list, dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
-    list1 = [0, 4]
-    list2 = [2, 6]
-    list_x = locat_list[list2, :1]
-    list_y = locat_list[list1, 1:2]
-    list_x = np.maximum(list_x, -list_x)
-    list_y = np.maximum(list_y, -list_y)
-    minx = np.min(list_x)
-    miny = np.min(list_y)
+def get_XY_length(locat_list):
+    list_temp=np.maximum(locat_list,-locat_list)
+    listx_t=np.array(list_temp[:,:1]).reshape(8)
+    listy_t=np.array(list_temp[:,1:]).reshape(8)
+    miny=100
+    minx=100
+    for i in range(listx_t.shape[0]):
+        if listy_t[i]<1 and minx>= listx_t[i]:
+            minx=listx_t[i]
+        if listx_t[i]<1 and miny>= listy_t[i]:
+            miny=listy_t[i]
     return minx, miny
 
 
@@ -1174,12 +1177,14 @@ if __name__ == '__main__':
     # find_wrong_txt()
     # find_best_tree() #找到最佳树
     # find_best_thre() #找到最佳阈值
-    file_time_name = '../Data/实验室4号树木/202101202029树莓派.txt'
-    file_locat_name = '../Data/实验室4号树木/location.txt'
+    file_time_name = '../Data/实验室3号树木/202101201929树莓派.txt'
+    file_locat_name = '../Data/实验室3号树木/location.txt'
     def_show(file_time_name, file_locat_name)
-    npy_name = '../label_Data/4号树木x_median.npy'
-    label_name = '../label_Data/label4_20.txt'
-    # print(show_npy(npy_name,label_name))
+    # npy_name = '../label_Data/3号树木x_median.npy'
+    # label_name = '../label_Data/label3.txt'
+    # yuzhip=show_npy(npy_name,label_name)
+    # print("阈值p:",yuzhip)
+    # np.savetxt('yuzhi.txt', np.array([yuzhip]), fmt='%d')
     # read_show('../label_Data/label4_20.txt')
     # label=read_txt('../label_Data/label4.txt')
     # test=read_txt('../test_Data/test4.txt')

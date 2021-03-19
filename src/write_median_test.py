@@ -74,7 +74,7 @@ class Link:
 
 if __name__ == '__main__':
     # 创建链表
-    data = np.load('../label_Data/4号树木x.npy')
+    data = np.load('../label_Data/3号树木x.npy')
     send_string = ''
     data_length = 10
     yuzhi = 0.002
@@ -112,4 +112,4 @@ if __name__ == '__main__':
             datatemp[count].append(data[times * data_length][i])
         count += 1
     datatemp = np.array(datatemp)
-    np.save('../label_Data/4号树木x_median.npy', datatemp)
+    np.save('../label_Data/3号树木x_median.npy', datatemp)
