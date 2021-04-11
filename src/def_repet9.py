@@ -8,7 +8,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from numpy.linalg import lstsq
 
 
-Cell_Number = 20
+Cell_Number = 100
 Ray_Number = 100
 NodeA_num = 8  # 节点数量
 NodeB_num = 8
@@ -55,7 +55,7 @@ def readfile(filename):
 
 # 超声波射线类，存超声波射线的传播时间、传播距离、速度等
 class Ultrasonic_Line():
-    def __init__(self, Node_list_R, Node_list_T, Time_data):
+    def __init__(self, Node_list_R, Node_list_T, Time_data,locat_list):
         self.C = np.zeros(shape=(NodeA_num, NodeB_num))  # 类似离心率
         self.B = np.zeros(shape=(NodeA_num, NodeB_num))  # 短轴
         self.Time_list = np.zeros(shape=(NodeA_num, NodeB_num))
@@ -95,9 +95,12 @@ class Ultrasonic_Line():
                 self.bias[i][j] = 1 - 0.2 * biospi * biospi
         self.Speed_list = np.divide(self.Speed_list, self.bias)
 
-        # 根据无损区域的速度，来更新时间误差
-        self.Shen_updateV(Time_data)
+        # show_ray(self.Speed_list, locat_list, Node_list_R)
 
+
+        # 根据无损区域的速度，来更新时间误差
+        self.Shen_updateV(Time_data,0)
+        # show_ray(self.Speed_list, locat_list, Node_list_R)
         # 速度归一化操作
         # 找出比thres大的下标号
         temp = np.where(self.Speed_list.reshape(NodeA_num * NodeB_num) < 1000)[0]
@@ -136,10 +139,14 @@ class Ultrasonic_Line():
             for j in range(NodeB_num):
                 self.B[i][j] = self.C[i][j] * self.Distance_list[i][j]
 
-    def Shen_updateV(self, Time_data):
+    def Shen_updateV(self, Time_data,model=0):
         """
         速度误差校正
-        :param file_time_name:
+        :param model: 时间矫正模式，0：7+自动普通，7个最周围+14个最快速度
+        1：按位置计算时间偏差，7+自动方程式
+        2：按位置计算时间偏差，自动设置方程式
+        3:按位置计算时间偏差，7+14
+        :param Time_data: 飞行时间数组
         """
         # 时间list赋值
         data_list = Time_data
@@ -151,77 +158,241 @@ class Ultrasonic_Line():
                 speed_sort[count] = i * 8 + j
                 count += 1
         sorted_speed = speed_sort[self.Speed_list.reshape(8 * 8)[speed_sort].argsort()]
-        count_num = 14
-        count_array = np.zeros(shape=(count_num, 3), dtype='int')
-        count_array1 = [[0, 0, 7], [1, 0, 1], [2, 2, 3], [3, 3, 4], [4, 4, 5], [5, 5, 6], [6, 6, 7]]
-        for i in range(count_num):
-            count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
-        # count_array=np.array([[0,0,7],[1,0,1],[2,2,3],[3,3,4],[4,4,5],[5,5,6],[6,6,7],[7,0,2],
-        #                [8,1,3],[9,2,4],[10,3,5],[11,4,6],[12,5,7],[13,0,6]],dtype='int')
-        count_array = np.vstack((count_array1, count_array))
-        for i in range(count_array.shape[0]):
-            count_array[i][0] = i
-        arrayl = count_array.shape[0]
-        A = np.zeros(shape=(arrayl, 14))  # 构造系数矩阵 A
-        B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
-        de0 = 1  # 默认接收偏置标号
-        de1 = 4  # 默认发送偏置标号
-        del0 = 1  # 默认接收传感器位置
-        del1 = 2  # 默认发送传感器位置l
-        dij = self.Distance_list[del0][del1]
-        bij = self.bias[del0][del1]
-        tij = self.Time_list[del0][del1]
-        for c, a, b in count_array:
-            # 接收传感器标号
-            if a == 0:
-                n = 0
-            else:
-                n = a * 2 - 1
-                # 发送传感器标号
-            if b == 7:
-                m = 7 * 2 - 1
-            else:
-                m = b * 2
-            # ti=t[de0] 要求的系数
-            # tj=t[de1] 要求的系数
-            dnm = self.Distance_list[a][b]
-            bnm = self.bias[a][b]
-            tnm = self.Time_list[a][b]
-            # tn=t[n] 要求的系数
-            # tm=t[m] 要求的系数
-            #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
-            #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
-            #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
-            A[c][de0] += dnm * bij
-            A[c][de1] += dnm * bij
-            A[c][n] -= dij * bnm
-            A[c][m] -= dij * bnm
-            B[c] = dnm * tij * bij - dij * bnm * tnm
-        r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
-        # print(r[2])
-        for i in range(14):
-            if i == 13:
-                n1 = 7
-                n2 = 1
-            elif i == 0:
-                n1 = 0
-                n2 = 0
-            else:
-                n1 = int((i + 1) / 2)
-                n2 = (i + 1) % 2
-            self.timebias[n1][n2] = r[0][i]
-
-        # 对原始时间加上偏置，重新计算
-        count = 0
-        for i in range(NodeA_num):
-            for j in range(i + 1, NodeB_num):
-                if i != j:
-                    # 给时间赋值，单位：毫秒
-                    self.Time_list[i][j] = data_list[count] - self.timebias[i][0] - self.timebias[j][1]
-                    self.Time_list[j][i] = data_list[count] - self.timebias[i][0] - self.timebias[j][1]
-                else:
-                    self.Time_list[j][i] = 0
-                count += 1
+        if model==0:
+            for count_num in range(14,25):
+                count_array = np.zeros(shape=(count_num, 3), dtype='int')
+                count_array1 = [[0, 0, 7], [1, 0, 1], [2, 2, 3], [3, 3, 4], [4, 4, 5], [5, 5, 6], [6, 6, 7]]
+                for i in range(count_num):
+                    count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
+                # count_array=np.array([[0,0,7],[1,0,1],[2,2,3],[3,3,4],[4,4,5],[5,5,6],[6,6,7],[7,0,2],
+                #                [8,1,3],[9,2,4],[10,3,5],[11,4,6],[12,5,7],[13,0,6]],dtype='int')
+                count_array = np.vstack((count_array1, count_array))
+                for i in range(count_array.shape[0]):
+                    count_array[i][0] = i
+                arrayl = count_array.shape[0]
+                A = np.zeros(shape=(arrayl, 14))  # 构造系数矩阵 A
+                B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
+                de0 = 1  # 默认接收偏置标号
+                de1 = 4  # 默认发送偏置标号
+                del0 = 1  # 默认接收传感器位置
+                del1 = 2  # 默认发送传感器位置l
+                dij = self.Distance_list[del0][del1]
+                bij = self.bias[del0][del1]
+                tij = self.Time_list[del0][del1]
+                for c, a, b in count_array:
+                    # 接收传感器标号
+                    if a == 0:
+                        n = 0
+                    else:
+                        n = a * 2 - 1
+                        # 发送传感器标号
+                    if b == 7:
+                        m = 7 * 2 - 1
+                    else:
+                        m = b * 2
+                    # ti=t[de0] 要求的系数
+                    # tj=t[de1] 要求的系数
+                    dnm = self.Distance_list[a][b]
+                    bnm = self.bias[a][b]
+                    tnm = self.Time_list[a][b]
+                    # tn=t[n] 要求的系数
+                    # tm=t[m] 要求的系数
+                    #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
+                    #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
+                    #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
+                    A[c][de0] += dnm * bij
+                    A[c][de1] += dnm * bij
+                    A[c][n] -= dij * bnm
+                    A[c][m] -= dij * bnm
+                    B[c] = dnm * tij * bij - dij * bnm * tnm
+                r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
+                if r[2]<13:
+                    continue
+                # print(r[2])
+                for i in range(14):
+                    if i == 13:
+                        n1 = 7
+                        n2 = 1
+                    elif i == 0:
+                        n1 = 0
+                        n2 = 0
+                    else:
+                        n1 = int((i + 1) / 2)
+                        n2 = (i + 1) % 2
+                    self.timebias[n1][n2] = r[0][i]
+                # 对原始时间加上偏置，重新计算
+                count = 0
+                for i in range(NodeA_num):
+                    for j in range(i + 1, NodeB_num):
+                        if i != j:
+                            # 给时间赋值，单位：毫秒
+                            self.Time_list[i][j] = data_list[count] - self.timebias[i][0] - self.timebias[j][1]
+                            self.Time_list[j][i] = data_list[count] - self.timebias[i][0] - self.timebias[j][1]
+                        else:
+                            self.Time_list[j][i] = 0
+                        count += 1
+                break
+        elif model==1:
+            mybias=np.zeros(shape=8,dtype='float')
+            for count_num in range(14):
+                count_array = np.zeros(shape=(count_num, 3), dtype='int')
+                count_array1 = [[0, 0, 7], [1, 0, 1], [2, 2, 3], [3, 3, 4], [4, 4, 5], [5, 5, 6], [6, 6, 7]]
+                for i in range(count_num):
+                    count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
+                count_array = np.vstack((count_array, count_array1))
+                for i in range(count_array.shape[0]):
+                    count_array[i][0] = i
+                arrayl = count_array.shape[0]
+                A = np.zeros(shape=(arrayl, 8))  # 构造系数矩阵 A
+                B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
+                de0 = count_array[0][1]  # 默认接收偏置标号
+                de1 = count_array[0][2]  # 默认发送偏置标号
+                del0 = count_array[0][1]  # 默认接收传感器位置
+                del1 = count_array[0][2]  # 默认发送传感器位置l
+                dij = self.Distance_list[del0][del1]
+                bij = self.bias[del0][del1]
+                tij = self.Time_list[del0][del1]
+                for c, a, b in count_array:
+                    # 接收传感器标号
+                    n=a
+                    m=b
+                    # ti=t[de0] 要求的系数
+                    # tj=t[de1] 要求的系数
+                    dnm = self.Distance_list[a][b]
+                    bnm = self.bias[a][b]
+                    tnm = self.Time_list[a][b]
+                    # tn=t[n] 要求的系数
+                    # tm=t[m] 要求的系数
+                    #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
+                    #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
+                    #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
+                    A[c][de0] += dnm * bij
+                    A[c][de1] += dnm * bij
+                    A[c][n] -= dij * bnm
+                    A[c][m] -= dij * bnm
+                    B[c] = dnm * tij * bij - dij * bnm * tnm
+                r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
+                if r[2]<8:
+                    continue
+                for i in range(8):
+                    mybias[i]=r[0][i]
+                break
+            # 对原始时间加上偏置，重新计算
+            count = 0
+            for i in range(NodeA_num):
+                for j in range(i + 1, NodeB_num):
+                    if i != j:
+                        # 给时间赋值，单位：毫秒
+                        self.Time_list[i][j] = data_list[count] - mybias[i]-mybias[j]
+                        self.Time_list[j][i] = data_list[count]  - mybias[i]-mybias[j]
+                    else:
+                        self.Time_list[j][i] = 0
+                    count += 1
+        elif model==2:
+            mybias = np.zeros(shape=8, dtype='float')
+            for count_num in range(7,14):
+                count_array = np.zeros(shape=(count_num, 3), dtype='int')
+                for i in range(count_num):
+                    count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
+                for i in range(count_array.shape[0]):
+                    count_array[i][0] = i
+                arrayl = count_array.shape[0]
+                A = np.zeros(shape=(arrayl, 8))  # 构造系数矩阵 A
+                B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
+                de0 = count_array[0][1]  # 默认接收偏置标号
+                de1 = count_array[0][2]  # 默认发送偏置标号
+                del0 = count_array[0][1]  # 默认接收传感器位置
+                del1 = count_array[0][2]  # 默认发送传感器位置l
+                dij = self.Distance_list[del0][del1]
+                bij = self.bias[del0][del1]
+                tij = self.Time_list[del0][del1]
+                for c, a, b in count_array:
+                    # 接收传感器标号
+                    n = a
+                    m = b
+                    # ti=t[de0] 要求的系数
+                    # tj=t[de1] 要求的系数
+                    dnm = self.Distance_list[a][b]
+                    bnm = self.bias[a][b]
+                    tnm = self.Time_list[a][b]
+                    # tn=t[n] 要求的系数
+                    # tm=t[m] 要求的系数
+                    #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
+                    #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
+                    #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
+                    A[c][de0] += dnm * bij
+                    A[c][de1] += dnm * bij
+                    A[c][n] -= dij * bnm
+                    A[c][m] -= dij * bnm
+                    B[c] = dnm * tij * bij - dij * bnm * tnm
+                r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
+                if r[2] < 8:
+                    continue
+                for i in range(8):
+                    mybias[i] = r[0][i]
+                break
+            # 对原始时间加上偏置，重新计算
+            count = 0
+            for i in range(NodeA_num):
+                for j in range(i + 1, NodeB_num):
+                    if i != j:
+                        # 给时间赋值，单位：毫秒
+                        self.Time_list[i][j] = data_list[count] - mybias[i] - mybias[j]
+                        self.Time_list[j][i] = data_list[count] - mybias[i] - mybias[j]
+                    else:
+                        self.Time_list[j][i] = 0
+                    count += 1
+        elif model == 3:
+            mybias = np.zeros(shape=8, dtype='float')
+            count_num=14
+            count_array = np.zeros(shape=(count_num, 3), dtype='int')
+            for i in range(count_num):
+                count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
+            for i in range(count_array.shape[0]):
+                count_array[i][0] = i
+            arrayl = count_array.shape[0]
+            A = np.zeros(shape=(arrayl, 8))  # 构造系数矩阵 A
+            B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
+            de0 = count_array[0][1]  # 默认接收偏置标号
+            de1 = count_array[0][2]  # 默认发送偏置标号
+            del0 = count_array[0][1]  # 默认接收传感器位置
+            del1 = count_array[0][2]  # 默认发送传感器位置l
+            dij = self.Distance_list[del0][del1]
+            bij = self.bias[del0][del1]
+            tij = self.Time_list[del0][del1]
+            for c, a, b in count_array:
+                # 接收传感器标号
+                n = a
+                m = b
+                # ti=t[de0] 要求的系数
+                # tj=t[de1] 要求的系数
+                dnm = self.Distance_list[a][b]
+                bnm = self.bias[a][b]
+                tnm = self.Time_list[a][b]
+                # tn=t[n] 要求的系数
+                # tm=t[m] 要求的系数
+                #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
+                #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
+                #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
+                A[c][de0] += dnm * bij
+                A[c][de1] += dnm * bij
+                A[c][n] -= dij * bnm
+                A[c][m] -= dij * bnm
+                B[c] = dnm * tij * bij - dij * bnm * tnm
+            r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
+            for i in range(8):
+                mybias[i] = r[0][i]
+            # 对原始时间加上偏置，重新计算
+            count = 0
+            for i in range(NodeA_num):
+                for j in range(i + 1, NodeB_num):
+                    if i != j:
+                        # 给时间赋值，单位：毫秒
+                        self.Time_list[i][j] = data_list[count] - mybias[i] - mybias[j]
+                        self.Time_list[j][i] = data_list[count] - mybias[i] - mybias[j]
+                    else:
+                        self.Time_list[j][i] = 0
+                    count += 1
         self.Speed_list = np.divide(self.Distance_list, self.Time_list)  # 速度list赋值
         self.Speed_list = np.divide(self.Speed_list, self.bias)
 
@@ -340,7 +511,7 @@ class Cell():
         self.X = np.zeros(shape=(Cell_Number, Cell_Number))
         self.Y = np.zeros(shape=(Cell_Number, Cell_Number))
         self.inner = np.zeros(shape=(Cell_Number, Cell_Number), dtype='bool')  # 是否在园内的标号
-        cell_length = (max(radiusA, radiusB) + 3) * 2 / Cell_Number
+        cell_length = (max(radiusA, radiusB) + 1) * 2 / Cell_Number
         for i in range(Cell_Number):
             self.X[:, i] = (i - Cell_Number / 2) * cell_length
             self.Y[i, :] = -(i - Cell_Number / 2) * cell_length
@@ -493,6 +664,62 @@ class Cell():
                     else:  # 选择平均值
                         self.V[i][j] = np.mean(nptemp[0])
 
+
+
+    def updata_rayV(self, V_list, Node_list_A, Node_list_B, dis, sort):
+        """
+        :param V_list: 速度矩阵
+        :param Node_list_A: A列传感器位置集合
+        :param Node_list_B: B列传感器位置集合
+        :param dis: cell距离线的最短距离
+        :param sort: 优先选择方式，0：最快，1：最慢，2：距离最近，3：直线的长度最短，其他：平均值
+        """
+
+        maxV=find_yuzhi(V_list,-1,8,8)
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                # 判断点是否在园内
+                self.V[i][j] = 2 * maxV
+                if not self.inner[i][j]:
+                    continue
+
+                CX = self.X[i][j]
+                CY = self.Y[i][j]
+                V_sum = 0;
+                V_count = 0;
+                nptemp = [[] for i in range(7)]
+                for n in range(NodeA_num):
+                    for m in range(n + 1, NodeB_num):
+                        distemp = pl_distance(CX, CY, Node_list_A[n].x, Node_list_A[n].y, Node_list_B[m].x,
+                                              Node_list_B[m].y)
+                        if distemp <= dis:
+                            nptemp[0].append(V_list[n][m])  # 第一行放速度
+                            nptemp[1].append(distemp)  # 第二行放距离
+                            nptemp[2].append(Node_list_A[n].x)  # 第三行放射线点1的x坐标
+                            nptemp[3].append(Node_list_A[n].y)  # 第四行放射线点1的y坐标
+                            nptemp[4].append(Node_list_B[m].x)  # 第五行放射线点2的x坐标
+                            nptemp[5].append(Node_list_B[m].y)  # 第六行放射线点2的y坐标
+                            nptemp[6].append(distance(Node_list_A[n], Node_list_B[m]))  # 第七行放射线的长度
+                nptemp = np.array(nptemp)
+                # 如果点受影响且在园内
+                if nptemp[0].shape[0] > 0:
+                    label = 0
+                    if sort == 0:  # 选择速度最小的值
+                        label = nptemp[0].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 1:  # 选择速度最慢的值
+                        label = nptemp[1].argsort()[-1]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 2:  # 选择距离最近的值
+                        label = nptemp[1].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 3:  # 选择直线长度最短的值
+                        label = nptemp[6].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    else:  # 选择平均值
+                        self.V[i][j] = np.mean(nptemp[0])
+
+
     def rect_tangle_distance(self, X, Y):
         """
         判断点Cell是否在四边形内
@@ -615,15 +842,17 @@ def show_plt(list_v, yuzhi, cell_inner):
     plt.show()
 
 
-def show_heatmap(list_v):
+def show_heatmap(list_v,red_thre=0.25,yellow_red=1.1,green_yellow=1.1,interflag=True):
     """
     显示list_v的热力图
+    :param red_thre: 红色百分比
+    :param yellow_red: 黄色百分比（乘上红色）
+    :param green_yellow: 绿色百分比(乘上黄色）
+    :param interflag: 是否需要平滑
     :param list_v:
-    :param agflag:
     """
-    red_thre = 0.25
-    yellow_thre = red_thre * 1.1
-    green_thre=yellow_thre*1.5
+    yellow_thre = red_thre * yellow_red
+    green_thre=yellow_thre*green_yellow
     # 红-黄-绿 带渐变
     cdict = {'red': ((0.0, 1.0, 1.0),
                      (yellow_thre, 1.0, 1.0),
@@ -665,8 +894,13 @@ def show_heatmap(list_v):
     fig.suptitle('heatmap', size=50)
     blue_red1 = LinearSegmentedColormap(cmap_name, cdict)
     plt.register_cmap(cmap=blue_red1)
-    im1 = axs.imshow(list_v, cmap=blue_red1,interpolation='bicubic')
-    fig.colorbar(im1, ax=axs)  # 在图旁边加上颜色bar
+    plt.tick_params(labelsize=50) #设置坐标轴字体大小
+    if interflag:
+        im1 = axs.imshow(list_v, cmap=blue_red1,interpolation='bicubic')
+    else:
+        im1 = axs.imshow(list_v, cmap=blue_red1)
+    cb=fig.colorbar(im1, ax=axs)  # 在图旁边加上颜色bar
+    cb.ax.tick_params(labelsize=50)  #设置色标刻度字体大小。
     plt.show()
 
 
@@ -1188,12 +1422,14 @@ def show_average(filelocat,label_name,length=0):
     # 根据位置初始化class
     Node_list_A = Node_update(locat_list)
     Node_list_B = Node_update(locat_list)
-    Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, data_mean)
+    Ultra_Line = Ultrasonic_Line(Node_list_A, Node_list_B, data_mean,locat_list)
+    # show_ray(Ultra_Line.Speed_list, locat_list, Node_list_A)
 
     x, y = get_XY_length(locat_list)
     cell_100 = Cell(x, y)
-    cell_100.updata_UV(Ultra_Line.Speed_list, Node_list_A, Node_list_B, 1, 3)  # 根据原射线对小格子进行速度估计
-    show_heatmap(cell_100.V)  # 显示热力图
+    cell_100.updata_UV(Ultra_Line.Speed_list, Node_list_A, Node_list_B, 2, 4)  # 根据原射线对小格子进行速度估计
+
+
     countp=0
     sump=0
     label = read_txt(label_name)
@@ -1213,6 +1449,7 @@ def show_average(filelocat,label_name,length=0):
                 tempaccuracy = flag
         except:
             pass
+    show_heatmap(cell_100.V,red_thre=tempyuzhi)  # 显示热力图
     temp = (tempyuzhi * Ultra_Line.mm + Ultra_Line.minspeed) / Ultra_Line.maxspeed
     countp += 1
     sump += tempyuzhi
@@ -1306,17 +1543,30 @@ def average_of_show(filelocat,label_name,length=0):
               "\n精度(Precision)：",'%.4f'%Precisionmean,
               "\n查全率(Recall)：",'%.4f'%Recallmean)
 
+def show_ray(Speed_list,locat_list,Node_list_A):
+    """
+    根据坐标和数值生成一张图，利用imshow显示
+    :param Speed_list:速度矩阵
+    :param locat_list:矩阵
+    :param Node_list_B:字典
+    """
+    x, y = get_XY_length(locat_list)
+    cell_100 = Cell(x, y)
+    cell_100.updata_rayV(Speed_list, Node_list_A, Node_list_A, 0.2, 2)  # 根据原射线对小格子进行速度估计
+    show_heatmap(cell_100.V,red_thre=0.3,yellow_red=1.5,green_yellow=1.5,interflag=False)
 
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
+    filename='../Data3/Data_file/实验室2号树木/'
+    labelname='../Data3/label/label2.txt'
     # find_wrong_txt()
     # find_best_tree() #找到最佳树
     # find_best_thre() #找到最佳阈值
     # file_time_name = '../Data/实验室3号树木/202101201929树莓派.txt'
     # file_locat_name = '../Data/实验室3号树木/location.txt'
     # def_show(file_time_name, file_locat_name,'../label_Data/label3_20.txt')
-    show_average('../Data3/Data_file/实验室1号树木/', '../Data3/label/label1_20.txt')
+    show_average(filename, labelname,68)
     # average_of_show('../Data2/实验室3号树木/locate1/', '../label_Data/label3_20.txt')
     # npy_name = '../label_Data/3号树木x_median.npy'
     # label_name = '../label_Data/label3.txt'

@@ -8,7 +8,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from numpy.linalg import lstsq
 
 
-Cell_Number = 20
+Cell_Number = 100
 Ray_Number = 100
 NodeA_num = 8  # 节点数量
 NodeB_num = 8
@@ -507,6 +507,59 @@ class Cell():
             temp = True
         return temp
 
+    def updata_rayV(self, V_list, Node_list_A, Node_list_B, dis, sort):
+        """
+        :param V_list: 速度矩阵
+        :param Node_list_A: A列传感器位置集合
+        :param Node_list_B: B列传感器位置集合
+        :param dis: cell距离线的最短距离
+        :param sort: 优先选择方式，0：最快，1：最慢，2：距离最近，3：直线的长度最短，其他：平均值
+        """
+
+        maxV=find_yuzhi(V_list,-1,8,8)
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                # 判断点是否在园内
+                self.V[i][j] = 2 * maxV
+                if not self.inner[i][j]:
+                    continue
+
+                CX = self.X[i][j]
+                CY = self.Y[i][j]
+                V_sum = 0;
+                V_count = 0;
+                nptemp = [[] for i in range(7)]
+                for n in range(NodeA_num):
+                    for m in range(n + 1, NodeB_num):
+                        distemp = pl_distance(CX, CY, Node_list_A[n].x, Node_list_A[n].y, Node_list_B[m].x,
+                                              Node_list_B[m].y)
+                        if distemp <= dis:
+                            nptemp[0].append(V_list[n][m])  # 第一行放速度
+                            nptemp[1].append(distemp)  # 第二行放距离
+                            nptemp[2].append(Node_list_A[n].x)  # 第三行放射线点1的x坐标
+                            nptemp[3].append(Node_list_A[n].y)  # 第四行放射线点1的y坐标
+                            nptemp[4].append(Node_list_B[m].x)  # 第五行放射线点2的x坐标
+                            nptemp[5].append(Node_list_B[m].y)  # 第六行放射线点2的y坐标
+                            nptemp[6].append(distance(Node_list_A[n], Node_list_B[m]))  # 第七行放射线的长度
+                nptemp = np.array(nptemp)
+                # 如果点受影响且在园内
+                if nptemp[0].shape[0] > 0:
+                    label = 0
+                    if sort == 0:  # 选择速度最小的值
+                        label = nptemp[0].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 1:  # 选择速度最慢的值
+                        label = nptemp[1].argsort()[-1]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 2:  # 选择距离最近的值
+                        label = nptemp[1].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    elif sort == 3:  # 选择直线长度最短的值
+                        label = nptemp[6].argsort()[0]
+                        self.V[i][j] = nptemp[0][label]
+                    else:  # 选择平均值
+                        self.V[i][j] = np.mean(nptemp[0])
+
 
 def pl_distance(px, py, ax, ay, bx, by):
     """
@@ -615,15 +668,14 @@ def show_plt(list_v, yuzhi, cell_inner):
     plt.show()
 
 
-def show_heatmap(list_v):
+def show_heatmap(list_v,red_thre=0.25,yellow_red=1.1,yellow_greed=1.1,interflag=True):
     """
     显示list_v的热力图
     :param list_v:
     :param agflag:
     """
-    red_thre = 0.25
-    yellow_thre = red_thre * 1.1
-    green_thre=yellow_thre*1.5
+    yellow_thre = red_thre * yellow_red
+    green_thre=yellow_thre*yellow_greed
     # 红-黄-绿 带渐变
     cdict = {'red': ((0.0, 1.0, 1.0),
                      (yellow_thre, 1.0, 1.0),
@@ -661,12 +713,17 @@ def show_heatmap(list_v):
               }
 
     cmap_name = 'my_list'
-    fig, axs = plt.subplots(figsize=(15, 15))
+    fig, axs = plt.subplots(figsize=(18, 18))
     fig.suptitle('heatmap', size=50)
     blue_red1 = LinearSegmentedColormap(cmap_name, cdict)
     plt.register_cmap(cmap=blue_red1)
-    im1 = axs.imshow(list_v, cmap=blue_red1,interpolation='bicubic')
-    fig.colorbar(im1, ax=axs)  # 在图旁边加上颜色bar
+    plt.tick_params(labelsize=50) #设置坐标轴字体大小
+    if interflag:
+        im1 = axs.imshow(list_v, cmap=blue_red1,interpolation='bicubic')
+    else:
+        im1 = axs.imshow(list_v, cmap=blue_red1)
+    cb=fig.colorbar(im1, ax=axs)  # 在图旁边加上颜色bar
+    cb.ax.tick_params(labelsize=50)  #设置色标刻度字体大小。
     plt.show()
 
 
@@ -956,13 +1013,15 @@ def get_locationbyradius(a, b):
         θ = i * 360 / NodeA_num - 90
         if θ == -90 or θ == 90:
             xtemp = 0
-            ytemp = b
+            ytemp = θ/90*b
         elif θ == 0 or θ == 180:
-            xtemp = a
+            xtemp = -(θ-90)/90*a
             ytemp = 0
         else:
-            xtemp = math.sqrt((a * a * b * b) / (b * b + a * a * math.tan(θ) * math.tan(θ)))
-            ytemp = xtemp * math.tan(θ)
+            θ=θ/180*math.pi
+            temp=math.tan(θ)
+            xtemp = a*math.cos(θ)
+            ytemp = b * math.sin(θ)
         locat_list[i].append(xtemp)
         locat_list[i].append(ytemp)
     locat_list = np.array(locat_list, dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
@@ -1129,7 +1188,7 @@ def show_npy(filename, labelname):
               "\n查全率(Recall)：",Recall)
         except:
             pass
-        read_show(txtfilename)  # 显示热力图
+        read_show(test)  # 显示热力图
     return sump/countp
 
 
@@ -1161,7 +1220,6 @@ def show_average(filelocat,label_name,length=0):
     if length == 0:
         locat_filename = filelocat + 'location.txt'
         locat_list = [[] for i in range(8)]
-        outcome = []
         with open(locat_filename, 'r', encoding='utf-8') as file_to_read:
             for i in range(8):
                 lines = file_to_read.readline()  # 整行读取数据
@@ -1174,6 +1232,7 @@ def show_average(filelocat,label_name,length=0):
         # 根据radius和Node的数量自动计算出坐标赋值
         locat_list = get_locationbyradius(radius, radius)
 
+    outcome = []
     for i in range(len(filenames)):
         data_list = readfile(filenames[i])
         outcome.append(data_list)
@@ -1194,7 +1253,7 @@ def show_average(filelocat,label_name,length=0):
     x, y = get_XY_length(locat_list)
     cell_100 = Cell(x, y)
     cell_100.update_RV(small_ellipse)  # 对应力波射线进一步处理后，根据新的小椭圆进行划分
-    show_heatmap(cell_100.V)  # 显示热力图
+
     tempi = 0
     countp=0
     sump=0
@@ -1215,6 +1274,7 @@ def show_average(filelocat,label_name,length=0):
                 tempaccuracy = flag
         except:
             pass
+    show_heatmap(cell_100.V,red_thre=tempyuzhi)  # 显示热力图
     temp = (tempyuzhi * Ultra_Line.mm + Ultra_Line.minspeed) / Ultra_Line.maxspeed
     countp += 1
     sump += tempyuzhi
@@ -1315,6 +1375,18 @@ def average_of_show(filelocat,label_name,length=0):
     print( "\n准确度(Accuracy)：", '%.4f'%Accuracymean,
               "\n精度(Precision)：",'%.4f'%Precisionmean,
               "\n查全率(Recall)：",'%.4f'%Recallmean)
+
+def show_ray(Speed_list,locat_list,Node_list_A):
+    """
+    根据坐标和数值生成一张图，利用imshow显示
+    :param Speed_list:速度矩阵
+    :param locat_list:矩阵
+    :param Node_list_B:字典
+    """
+    x, y = get_XY_length(locat_list)
+    cell_100 = Cell(x, y)
+    cell_100.updata_rayV(Speed_list, Node_list_A, Node_list_A, 0.2, 2)  # 根据原射线对小格子进行速度估计
+    show_heatmap(cell_100.V,red_thre=0.3,yellow_red=1.5,yellow_greed=1.5,interflag=False)
 
 
 if __name__ == '__main__':

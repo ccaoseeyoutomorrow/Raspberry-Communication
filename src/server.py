@@ -31,7 +31,7 @@ while True:
             print("数据错误")
             break
         nowtime=time.strftime("%m%d%H%M%S", time.localtime())
-        filename= '../Data3/Data_file/实验室2号树木/'
+        filename= '../Data3/Data_file/实验室3号树木/'
         record_file = open(filename+nowtime+'树莓派.txt', 'w')
         temp=str(data, encoding="utf-8")
         if temp!='\n':

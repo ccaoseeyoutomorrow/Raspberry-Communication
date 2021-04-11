@@ -115,10 +115,10 @@ def write_defect():
     radiusA=10.82 #检测树木传感器的位置长轴
     radiusB=10.82 #检测树木传感器的位置短轴
     myarea = Area(radiusA,radiusB)
-    radX1=[-5.5]
-    radY1=[0]
-    radX2=[3.5]
-    radY2=[0]
+    radX1=[-3.4,-5]
+    radY1=[3.6,-0.6]
+    radX2=[4.3,5.7]
+    radY2=[3.6,-0.6]
     myarea.update_circle(radX1,radY1,radX2,radY2)
     np.savetxt('../Data3/label/label2_20.txt', myarea.val,fmt='%d',delimiter=' ')
     read_show(myarea.val)  # 显示刚刚保存的图像
