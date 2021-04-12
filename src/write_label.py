@@ -4,7 +4,7 @@
 # 计算剩余时间偏置时，假设收发时间偏置不一样
 # 将射线的速度进行归一化操作
 # 加入热力图
-import math
+import math,re
 import numpy as np
 from def_repet9 import read_show
 import matplotlib.pyplot as plt
@@ -14,7 +14,7 @@ import time
 from numpy.linalg import lstsq
 import os
 
-Cell_Number=20
+Cell_Number=100
 
 
 
@@ -26,9 +26,20 @@ class Node():  # 存放传感器位置
         self.x = x
         self.y = y
 
+
+def Node_update(Node_location):
+    """
+    创建传感器类list
+    :param Node_location:
+    :return:
+    """
+    Node_list = []
+    for i in Node_location:
+        Node_list.append(Node(i[0], i[1]))
+    return Node_list  # 返回存放Node位置的list
 #网格类
 class Area():
-    def __init__(self,radiusA,radiusB):
+    def __init__(self,radiusA,radiusB,filelocat=None):
         self.val=np.zeros(shape=(Cell_Number, Cell_Number),dtype='float')
         self.X=np.zeros(shape=(Cell_Number, Cell_Number))
         self.Y=np.zeros(shape=(Cell_Number, Cell_Number))
@@ -37,11 +48,27 @@ class Area():
             self.X[:, i] = (i - Cell_Number / 2) * cell_length
             self.Y[i, :] = -(i - Cell_Number / 2) * cell_length
 
-        for i in range(Cell_Number):
-            for j in range(Cell_Number):
-                # 判断点是否在椭圆内
-                if Ellipse_distance(0,0,self.X[i][j],self.Y[i][j],radiusA,radiusB):
-                    self.val[i][j]=1
+        if filelocat==None:
+            for i in range(Cell_Number):
+                for j in range(Cell_Number):
+                    # 判断点是否在椭圆内
+                    if Ellipse_distance(0,0,self.X[i][j],self.Y[i][j],radiusA,radiusB):
+                        self.val[i][j]=1
+        else:
+            locat_list = [[] for i in range(8)]
+            with open(filelocat, 'r', encoding='utf-8') as file_to_read:
+                for i in range(8):
+                    lines = file_to_read.readline()  # 整行读取数据
+                    nums = re.split(',|\n', lines)
+                    locat_list[i].append(nums[0])  # 添加新读取的数据
+                    locat_list[i].append(nums[1])  # 添加新读取的数据
+            locat_list = np.array(locat_list, dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
+            Node_list = Node_update(locat_list)
+            for i in range(Cell_Number):
+                for j in range(Cell_Number):
+                    # 判断点是否在椭圆内
+                    if is_inner(Node_list,self.X[i][j],self.Y[i][j]):
+                        self.val[i][j] = 1
 
     def update_circle(self,radX1,radY1,radX2,radY2):
         """
@@ -73,7 +100,26 @@ class Area():
                     if  is_inner(radxys[n],self.X[i][j],self.Y[i][j]): #如果在缺陷内
                         self.val[i][j]=2
 
-
+def is_inner(vertxy, testx, testy):
+    """
+    判断点是否在多边形内
+    :param vertxy: 多边形xy坐标点数组
+    :param testx: 点的x坐标
+    :param testy: 点的y坐标
+    :return:
+    """
+    j = len(vertxy) - 1
+    flag = False
+    for i in range(len(vertxy)):
+        # 如果点在多边形两点y轴之间，且点在该两点直线的左（右）边
+        temp1 = (vertxy[i].y > testy)
+        temp2 = (vertxy[j].y > testy)
+        if (((vertxy[i].y > testy) != (vertxy[j].y > testy)) and
+                (testx < (vertxy[j].x - vertxy[i].x) * (testy - vertxy[i].y) / (vertxy[j].y - vertxy[i].y) + vertxy[
+                    i].x)):
+            flag = bool(1 - flag)
+        j = i
+    return flag;
 
 def Ellipse_distance(Circle_X,Circle_Y,Cell_X,Cell_Y,a,b):
     """
@@ -93,36 +139,45 @@ def Ellipse_distance(Circle_X,Circle_Y,Cell_X,Cell_Y,a,b):
     else:
         return 0
 
-# 判断点是否在多边形内
-# vertxy：多边形xy坐标点数组
-# testy：点的y坐标
-# testx：点的x坐标
-def is_inner(vertxy,testx,testy):
-    j= len(vertxy)-1
-    flag=False
-    for i in range(len(vertxy)):
-        # 如果点在多边形两点y轴之间，且点在该两点直线的左（右）边
-        temp1= (vertxy[i].y>testy)
-        temp2=(vertxy[j].y>testy)
-        if ( ((vertxy[i].y>testy) != (vertxy[j].y>testy)) and
-                (testx < (vertxy[j].x-vertxy[i].x) * (testy-vertxy[i].y) / (vertxy[j].y-vertxy[i].y) + vertxy[i].x)):
-            flag = bool(1-flag)
-        j=i
-    return flag;
+
+def  get_XY_length(locat_list):
+    list_temp=np.maximum(locat_list,-locat_list)
+    listx_t=np.array(list_temp[:,:1]).reshape(8)
+    listy_t=np.array(list_temp[:,1:]).reshape(8)
+    maxy=0
+    maxx=0
+    for i in range(listx_t.shape[0]):
+        if listy_t[i]<3 and maxx<= listx_t[i]:
+            maxx=listx_t[i]
+        if listx_t[i]<3 and maxy<= listy_t[i]:
+            maxy=listy_t[i]
+    return maxx, maxy
 
 
-def write_defect():
-    radiusA=10.82 #检测树木传感器的位置长轴
-    radiusB=10.82 #检测树木传感器的位置短轴
-    myarea = Area(radiusA,radiusB)
-    radX1=[-3.4,-5]
-    radY1=[3.6,-0.6]
-    radX2=[4.3,5.7]
-    radY2=[3.6,-0.6]
+
+def write_defect(filelocat=None):
+    radiusA = 11  # 检测树木传感器的位置长轴
+    radiusB = 14  # 检测树木传感器的位置短轴
+    if filelocat!=None:
+        locat_list = [[] for i in range(8)]
+        with open(filelocat, 'r', encoding='utf-8') as file_to_read:
+            for i in range(8):
+                lines = file_to_read.readline()  # 整行读取数据
+                nums = re.split(',|\n', lines)
+                locat_list[i].append(nums[0])  # 添加新读取的数据
+                locat_list[i].append(nums[1])  # 添加新读取的数据
+        locat_list = np.array(locat_list, dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
+        radiusA, radiusB = get_XY_length(locat_list)
+    myarea = Area(radiusA, radiusB,filelocat)
+    radX1=[-3.4,-4.8]
+    radY1=[6,0]
+    radX2=[4.3,5.3]
+    radY2=[5.6,3.9]
     myarea.update_circle(radX1,radY1,radX2,radY2)
     np.savetxt('../Data3/label/label2_20.txt', myarea.val,fmt='%d',delimiter=' ')
     read_show(myarea.val)  # 显示刚刚保存的图像
     print(myarea.val)
 
 if __name__ == '__main__':
-    write_defect()
+    filalocat='../Data3/Data_npy/实验室2号树木/location.txt'
+    write_defect(filalocat)

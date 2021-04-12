@@ -317,8 +317,11 @@ class Cell():
     def update_RV(self, Line_list):
         for i in range(Cell_Number):
             for j in range(Cell_Number):
-                V_sum = 0;
-                V_count = 0;
+                if not self.inner[i][j]:
+                    self.V[i][j]=1.1
+                    continue
+                V_sum = 0
+                V_count = 0
                 for n in range(NodeA_num):
                     for m in range(NodeB_num):
                         if n != m:
@@ -330,7 +333,7 @@ class Cell():
                                     V_sum += Line_list[n][m].Speed_list[x]
                                     V_count += 1
                 # 如果点受影响且在园内
-                if V_count != 0 and self.inner[i][j]:
+                if V_count != 0:
                     self.V[i][j] = V_sum / V_count
 
     def sperate_jianbian(self):
@@ -1005,12 +1008,21 @@ def show_average(filelocat,label_name,length=0):
     :param filelocat: 数据文件夹位置
     :param label_name: label文件位置
     """
+    #读取时间数据
     filenames = [name for name in os.listdir(filelocat)
                  if os.path.isfile(os.path.join(filelocat, name)) and
                  (name.endswith('树莓派.txt') or
                   name.startswith('树莓派'))]
     for i in range(len(filenames)):
         filenames[i] = filelocat + filenames[i]
+    outcome = []
+    for i in range(len(filenames)):
+        data_list = readfile(filenames[i])
+        outcome.append(data_list)
+    outcome = np.array(outcome).reshape(-1, 28)
+    data_mean = np.mean(outcome, axis=0)
+
+    #读取位置信息
     if length == 0:
         locat_filename = filelocat + 'location.txt'
         locat_list = [[] for i in range(8)]
@@ -1026,12 +1038,7 @@ def show_average(filelocat,label_name,length=0):
         # 根据radius和Node的数量自动计算出坐标赋值
         locat_list = get_locationbyradius(radius, radius)
 
-    outcome = []
-    for i in range(len(filenames)):
-        data_list = readfile(filenames[i])
-        outcome.append(data_list)
-    outcome = np.array(outcome).reshape(-1,28)
-    data_mean=np.mean(outcome,axis=0)
+
     # 根据radius和Node的数量自动计算出坐标赋值
     # locat_list=get_locationbyradius(radiusa,radiusb)
     # 根据位置初始化class

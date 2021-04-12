@@ -117,7 +117,7 @@ def write_only_time(osname):
         data_list = readfile(filenames[i])
         outcome.append(data_list)
     outcome = np.array(outcome).reshape(-1, 28)
-    np.save('../Data3/Data_npy/实验室2号树木/2号树木501x28.npy', outcome)
+    np.save('../Data3/Data_npy/实验室3号树木/3号树木501x28.npy', outcome)
 
 def find_wrong_x():
     """
@@ -157,4 +157,4 @@ def find_wrong_x():
             outcome.append(data_list)
 
 if __name__ == '__main__':
-    write_only_time(osname = '../Data3/Data_file/实验室2号树木/')
+    write_only_time(osname = '../Data3/Data_file/实验室3号树木/')
