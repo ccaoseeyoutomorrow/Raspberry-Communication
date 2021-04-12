@@ -140,7 +140,7 @@ def Ellipse_distance(Circle_X,Circle_Y,Cell_X,Cell_Y,a,b):
         return 0
 
 
-def  get_XY_length(locat_list):
+def  get_maxXY_length(locat_list):
     list_temp=np.maximum(locat_list,-locat_list)
     listx_t=np.array(list_temp[:,:1]).reshape(8)
     listy_t=np.array(list_temp[:,1:]).reshape(8)
@@ -155,9 +155,14 @@ def  get_XY_length(locat_list):
 
 
 
-def write_defect(filelocat=None):
-    radiusA = 11  # 检测树木传感器的位置长轴
-    radiusB = 14  # 检测树木传感器的位置短轴
+def write_defect(filelocat=None,write_model=0):
+    """
+    生成缺陷label
+    :param filelocat:
+    :param write_model: 选择生成模式
+    0：生成圆形缺陷label
+    1：生成不规则缺陷label
+    """
     if filelocat!=None:
         locat_list = [[] for i in range(8)]
         with open(filelocat, 'r', encoding='utf-8') as file_to_read:
@@ -167,17 +172,23 @@ def write_defect(filelocat=None):
                 locat_list[i].append(nums[0])  # 添加新读取的数据
                 locat_list[i].append(nums[1])  # 添加新读取的数据
         locat_list = np.array(locat_list, dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
-        radiusA, radiusB = get_XY_length(locat_list)
-    myarea = Area(radiusA, radiusB,filelocat)
-    radX1=[-3.4,-4.8]
-    radY1=[6,0]
-    radX2=[4.3,5.3]
-    radY2=[5.6,3.9]
+        radiusA, radiusB = get_maxXY_length(locat_list)
+    if write_model==0:
+        #生成圆形缺陷label
+        myarea = Area(radiusA, radiusB)
+    else:
+        #生成不规则缺陷label
+        myarea = Area(radiusA, radiusB, filelocat)
+    radX1=[]
+    radY1=[]
+    radX2=[]
+    radY2=[]
     myarea.update_circle(radX1,radY1,radX2,radY2)
-    np.savetxt('../Data3/label/label2_20.txt', myarea.val,fmt='%d',delimiter=' ')
+    np.savetxt('../Data3/label/实验室6号树木/label6_irregular.txt', myarea.val,fmt='%d',delimiter=' ')
     read_show(myarea.val)  # 显示刚刚保存的图像
     print(myarea.val)
 
 if __name__ == '__main__':
-    filalocat='../Data3/Data_npy/实验室2号树木/location.txt'
-    write_defect(filalocat)
+    Cell_Number = 100
+    filalocat='../Data3/Data_npy/实验室6号树木/location.txt'
+    write_defect(filalocat,write_model=1)
