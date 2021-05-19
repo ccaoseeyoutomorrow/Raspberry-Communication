@@ -586,29 +586,50 @@ class Cell():
                     else:  # 选择平均值
                         self.V[i][j] = np.mean(nptemp[0])
 
-    def update_disV(self, ultraline, Node_list):
+
+    def update_average_disV(self, ultraline, Node_list):
         """
         根据直线速度来更新cell速度
         """
         plus = self.X[1][1] - self.X[0][0]
+        V_list = np.zeros(shape=(Cell_Number, Cell_Number, 2), dtype='float')
+        tempx = self.X.reshape((Cell_Number * Cell_Number))
+        tempy = self.Y.reshape((Cell_Number * Cell_Number))
+        tempInner = self.inner.reshape((Cell_Number * Cell_Number))
+        for n in range(NodeA_num):
+            for m in range(n + 1, NodeB_num):
+                maxx = round(max(Node_list[n].x, Node_list[m].x), 6)
+                minx = round(min(Node_list[n].x, Node_list[m].x), 6)
+                maxy = round(max(Node_list[n].y, Node_list[m].y), 6)
+                miny = round(min(Node_list[n].y, Node_list[m].y), 6)
+                # 排除k=0和k无穷的选项
+                if maxx == minx:  # k无穷
+                    temp = np.where((tempx + plus > minx) & (tempx <= minx) & (tempInner == True))[0]
+                elif maxy == miny:
+                    temp = np.where((tempy > miny - plus) & (tempy <= miny) & (tempInner == True))[0]
+                else:
+                    Xhang = self.X[0, :]
+                    Ylie = self.Y[:, 0]
+                    xs = np.where(Xhang <= minx)[0][-1]
+                    xb = np.where(Xhang >= maxx)[0][0]
+                    ys = np.where(Ylie <= miny)[0][0]
+                    yb = np.where(Ylie >= maxy)[0][-1]
+
+                    for i in range(yb,ys):
+                        for j in range(xs,xb):
+                            dis=inter_point5(self.X[i][j], self.Y[i][j], self.X[i][j] + plus, self.Y[i][j] + plus,
+                                             Node_list[n].x, Node_list[n].y, Node_list[m].x, Node_list[m].y)
+                            if dis == None:
+                                continue
+                #     Vtemp = ultraline.Speed_list[n][m]
+                #     V_list[yl][xl][0] = (V_list[yl][xl][0] * V_list[yl][xl][1] + Vtemp) / (V_list[yl][xl][1] + 1)
+                #     V_list[yl][xl][1]+=1
+                # xytemp=np.array(xytemp)
+                pass
+
         for i in range(Cell_Number):
             for j in range(Cell_Number):
-                count = 0
-                P = []
-                for n in range(NodeA_num):
-                    for m in range(n + 1, NodeB_num):
-                        if self.inner[i][j] != True:
-                            continue
-                        dis = inter_point5(self.X[i][j], self.Y[i][j], self.X[i][j] + plus, self.Y[i][j] + plus,
-                                           Node_list[n].x, Node_list[n].y, Node_list[m].x, Node_list[m].y)
-                        if dis == None or dis == 0:
-                            continue
-                        Ptemp = dis * ultraline.Time_list[n][m] / (
-                                ultraline.Distance_list[n][m] * ultraline.Distance_list[n][m])
-                        P.append(Ptemp)
-                P = np.array(P, dtype='float')
-                if P.shape[0] > 0:
-                    self.V[i][j] = 1 / np.sum(P)
+                self.V[i][j] = V_list[i][j][0]
 
     def update_average_disV2(self, ultraline, Node_list):
         """
@@ -681,8 +702,6 @@ class Cell():
         for i in range(Cell_Number):
             for j in range(Cell_Number):
                 self.V[i][j] = V_list[i][j][0]
-
-
 
 def inter_point5(x0, y0, x1, y1, x2, y2, x3, y3):
     """
