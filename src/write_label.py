@@ -179,16 +179,16 @@ def write_defect(filelocat=None,write_model=0):
     else:
         #生成不规则缺陷label
         myarea = Area(radiusA, radiusB, filelocat)
-    radX1=[]
-    radY1=[]
-    radX2=[]
-    radY2=[]
+    radX1=[-2.7]
+    radY1=[-6]
+    radX2=[2.1]
+    radY2=[0]
     myarea.update_circle(radX1,radY1,radX2,radY2)
-    np.savetxt('../Data3/label/实验室6号树木/label6_irregular.txt', myarea.val,fmt='%d',delimiter=' ')
+    np.savetxt('../Data3/label/实验室4号树木/label4_20.txt', myarea.val,fmt='%d',delimiter=' ')
     read_show(myarea.val)  # 显示刚刚保存的图像
     print(myarea.val)
 
 if __name__ == '__main__':
-    Cell_Number = 100
-    filalocat='../Data3/Data_npy/实验室6号树木/location.txt'
-    write_defect(filalocat,write_model=1)
+    Cell_Number = 20
+    filalocat='../Data3/Data_npy/实验室4号树木/location.txt'
+    write_defect(filalocat,write_model=0)

@@ -11,6 +11,7 @@ NodeA_num = 8
 NodeB_num = NodeA_num
 Cell_Number = 100
 
+
 class Node():  # 存放传感器位置
     def __init__(self, x=0, y=0):
         """
@@ -58,7 +59,7 @@ def readfile(filename):
 
 # 超声波射线类，存超声波射线的传播时间、传播距离、速度等
 class Ultrasonic_Line():
-    def __init__(self, Node_list_R, Node_list_T, Time_data):
+    def __init__(self, Node_list_R, Node_list_T, Time_data, distemp=2.4):
         """
         生成射线类
         :param Node_list_R: 接收端位置（x，y）
@@ -75,7 +76,7 @@ class Ultrasonic_Line():
         for i in range(NodeA_num):  # 距离list赋值
             for j in range(NodeB_num):
                 if i != j:
-                    temp1 = 2.4  # 传感器之间的误差
+                    temp1 = distemp  # 传感器之间的误差
                     temp2 = distance(Node_list_R[i], Node_list_T[j])  # 传感器之间的距离
                     # 给距离赋值，单位：厘米
                     self.Distance_list[i][j] = math.sqrt(temp1 * temp1 + temp2 * temp2)
@@ -140,151 +141,33 @@ class Ultrasonic_Line():
         :param correct_model: 时间矫正模式
         0:不做变化
         1:只有李光辉的1-0.2*角度*角度
-        2：李光辉+按2倍位置计算时间偏差，7+14，7个最周围+14个最快速度
-        3：李光辉+按1倍位置计算时间偏差，7+自动方程式
-        4：李光辉+按1倍位置计算时间偏差，自动设置方程式
-        5:李光辉+按1倍位置计算时间偏差，7+14
-        6:李光辉+按2倍位置计算时间偏差，7+自动
-        7:李光辉+按2倍位置计算时间偏差，7+自动，考虑不同材质通过的距离问题
-        """
-        if model == 0:
-            return
-        elif model == 1:
-            self.Speed_list = np.divide(self.Speed_list, self.bias)
-        else:
-            model = model - 1
-            self.Shen_updateV(Time_data, model)
-
-    def speed_homogenization(self):
-        """
-        速度均一化操作
-        """
-        # 速度均一化操作
-        # 找出比thres大的下标号
-        temp = np.where(self.Speed_list.reshape(NodeA_num * NodeB_num) < 1000)[0]
-        # 找出最大/小速度的下标号
-        maxlabel = temp[self.Speed_list.reshape(NodeA_num * NodeB_num)[temp].argsort()[-1]]
-        mixlabel = temp[self.Speed_list.reshape(NodeA_num * NodeB_num)[temp].argsort()[0]]
-        maxspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[maxlabel]
-        minspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[mixlabel]
-        mm = maxspeed - minspeed
-        self.yuzhi = (maxspeed - minspeed - 50) / mm
-        self.mm = mm
-        self.minspeed = minspeed
-        self.maxspeed = maxspeed
-        count = 0
-        for i in range(NodeA_num):
-            for j in range(i + 1, NodeB_num):
-                if i != j:
-                    # 给时间赋值，单位：毫秒
-                    self.Speed_list[i][j] = (self.Speed_list[i][j] - minspeed) / mm
-                    self.Speed_list[j][i] = (self.Speed_list[j][i] - minspeed) / mm
-                else:
-                    self.Time_list[j][i] = 0
-                count += 1
-        pass
-
-    def Shen_updateV(self, Time_data, model=4):
-        """
-        速度误差校正
-        :param model: 时间矫正模式
-        1：李光辉+按2倍位置计算时间偏差，7+14，7个最周围+14个最快速度
         2：李光辉+按1倍位置计算时间偏差，7+自动方程式
         3：李光辉+按1倍位置计算时间偏差，自动设置方程式
-        4:李光辉+按1倍位置计算时间偏差，7+14
-        5:李光辉+按2倍位置计算时间偏差，7+自动
-        6:李光辉+按2倍位置计算时间偏差，7+自动，考虑不同材质通过的距离问题
-        :param Time_data: 飞行时间数组
+        4:李光辉+按1倍位置计算时间偏差，7+7
+        5:李光辉+按1倍位置计算时间偏差，7+7，考虑不同材质通过的距离问题
         """
         # 时间list赋值
         data_list = Time_data
         # 计算时间补偿
-        speed_sort = np.zeros(shape=(28), dtype='int')
+        timenumber = int(NodeA_num * (NodeA_num - 1) / 2)
+        speed_sort = np.zeros(shape=(timenumber), dtype='int')
         count = 0
         self.Speed_list = np.divide(self.Speed_list, self.bias)
-        for i in range(8):
-            for j in range(i + 1, 8):
-                speed_sort[count] = i * 8 + j
+        for i in range(NodeA_num):
+            for j in range(i + 1, NodeA_num):
+                speed_sort[count] = i * NodeA_num + j
                 count += 1
-        sorted_speed = speed_sort[self.Speed_list.reshape(8 * 8)[speed_sort].argsort()]
-
-        if model == 1:
-            timebias = np.zeros(shape=(NodeA_num, 2))
-            count_num = 14
-            count_array = np.zeros(shape=(count_num, 3), dtype='int')
-            count_array1 = [[0, 0, 7], [1, 0, 1], [2, 2, 3], [3, 3, 4], [4, 4, 5], [5, 5, 6], [6, 6, 7]]
-            for i in range(count_num):
-                count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
-            # count_array=np.array([[0,0,7],[1,0,1],[2,2,3],[3,3,4],[4,4,5],[5,5,6],[6,6,7],[7,0,2],
-            #                [8,1,3],[9,2,4],[10,3,5],[11,4,6],[12,5,7],[13,0,6]],dtype='int')
-            count_array = np.vstack((count_array1, count_array))
-            for i in range(count_array.shape[0]):
-                count_array[i][0] = i
-            arrayl = count_array.shape[0]
-            A = np.zeros(shape=(arrayl, 14))  # 构造系数矩阵 A
-            B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
-            de0 = 1  # 默认接收偏置标号
-            de1 = 4  # 默认发送偏置标号
-            del0 = 1  # 默认接收传感器位置
-            del1 = 2  # 默认发送传感器位置l
-            dij = self.Distance_list[del0][del1]
-            bij = self.bias[del0][del1]
-            tij = self.Time_list[del0][del1]
-            for c, a, b in count_array:
-                # 接收传感器标号
-                if a == 0:
-                    n = 0
-                else:
-                    n = a * 2 - 1
-                    # 发送传感器标号
-                if b == 7:
-                    m = 7 * 2 - 1
-                else:
-                    m = b * 2
-                # ti=t[de0] 要求的系数
-                # tj=t[de1] 要求的系数
-                dnm = self.Distance_list[a][b]
-                bnm = self.bias[a][b]
-                tnm = self.Time_list[a][b]
-                # tn=t[n] 要求的系数
-                # tm=t[m] 要求的系数
-                #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
-                #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
-                #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
-                A[c][de0] += dnm * bij
-                A[c][de1] += dnm * bij
-                A[c][n] -= dij * bnm
-                A[c][m] -= dij * bnm
-                B[c] = dnm * tij * bij - dij * bnm * tnm
-            r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
-            # print(r[2])
-            for i in range(14):
-                if i == 13:
-                    n1 = 7
-                    n2 = 1
-                elif i == 0:
-                    n1 = 0
-                    n2 = 0
-                else:
-                    n1 = int((i + 1) / 2)
-                    n2 = (i + 1) % 2
-                timebias[n1][n2] = r[0][i]
-            # 对原始时间加上偏置，重新计算
-            count = 0
-            for i in range(NodeA_num):
-                for j in range(i + 1, NodeB_num):
-                    if i != j:
-                        # 给时间赋值，单位：毫秒
-                        self.Time_list[i][j] = data_list[count] - timebias[i][0] - timebias[j][1]
-                        self.Time_list[j][i] = data_list[count] - timebias[i][0] - timebias[j][1]
-                    else:
-                        self.Time_list[j][i] = 0
-                    count += 1
+        sorted_speed = speed_sort[self.Speed_list.reshape(NodeA_num * NodeA_num)[speed_sort].argsort()]
+        if model == 0:
+            self.Speed_list = np.divide(self.Distance_list, self.Time_list)  # 速度list赋值
+            return
+        elif model == 1:
+            return
         elif model == 2:
             mybias = np.zeros(shape=8, dtype='float')
             for count_num in range(14):
                 count_array = np.zeros(shape=(count_num, 3), dtype='int')
-                count_array1 = [[0, 0, 7], [1, 0, 1], [2, 2, 3], [3, 3, 4], [4, 4, 5], [5, 5, 6], [6, 6, 7]]
+                count_array1 = [[0, 0, 7], [1, 0, 1], [2, 1, 2], [3, 2, 3], [4, 3, 4], [5, 4, 5], [6, 5, 6], [7, 6, 7]]
                 for i in range(count_num):
                     count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
                 count_array = np.vstack((count_array1, count_array))
@@ -337,7 +220,7 @@ class Ultrasonic_Line():
                         self.Time_list[j][i] = 0
                     count += 1
         elif model == 3:
-            mybias = np.zeros(shape=8, dtype='float')
+            mybias = np.zeros(shape=NodeA_num, dtype='float')
             for count_num in range(7, 14):
                 count_array = np.zeros(shape=(count_num, 3), dtype='int')
                 for i in range(count_num):
@@ -391,14 +274,11 @@ class Ultrasonic_Line():
                         self.Time_list[j][i] = 0
                     count += 1
         elif model == 4:
-            mybias = np.zeros(shape=8, dtype='float')
-            count_num = 14
-            count_array1 = np.zeros(shape=(count_num, 3), dtype='int')
+            mybias = np.zeros(shape=NodeA_num, dtype='float')
+            count_num = 0
+            count_array = np.zeros(shape=(count_num, 3), dtype='int')
+            count_array1 = [[0, 0, 7], [1, 0, 1], [2, 1, 2], [3, 2, 3], [4, 3, 4], [5, 4, 5], [6, 5, 6], [7, 6, 7]]
             for i in range(count_num):
-                count_array1[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
-
-            count_array = np.zeros(shape=(NodeA_num, 3), dtype='int')
-            for i in range(NodeA_num):
                 count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
             count_array = np.vstack((count_array1, count_array))
             for i in range(count_array.shape[0]):
@@ -413,7 +293,60 @@ class Ultrasonic_Line():
             dij = self.Distance_list[del0][del1]
             bij = self.bias[del0][del1]
             tij = self.Time_list[del0][del1]
-            for c, a, b in count_array:
+            for c, a, b in count_array[1:]:
+                # 接收传感器标号
+                n = a
+                m = b
+                # ti=t[de0] 要求的系数
+                # tj=t[de1] 要求的系数
+                dnm = self.Distance_list[a][b]
+                bnm = self.bias[a][b]
+                tnm = self.Time_list[a][b]
+                # tn=t[n] 要求的系数
+                # tm=t[m] 要求的系数
+                #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
+                #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
+                #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
+                A[c][de0] += dnm * bij
+                A[c][de1] += dnm * bij
+                A[c][n] -= dij * bnm
+                A[c][m] -= dij * bnm
+                B[c] = dnm * tij * bij - dij * bnm * tnm
+            r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
+            for i in range(8):
+                mybias[i] = r[0][i]
+            # 对原始时间加上偏置，重新计算
+            count = 0
+            for i in range(NodeA_num):
+                for j in range(i + 1, NodeA_num):
+                    if i != j:
+                        # 给时间赋值，单位：毫秒
+                        self.Time_list[i][j] = data_list[count] - mybias[i] - mybias[j]
+                        self.Time_list[j][i] = data_list[count] - mybias[i] - mybias[j]
+                    else:
+                        self.Time_list[j][i] = 0
+                    count += 1
+        elif model == 5:
+            mybias = np.zeros(shape=8, dtype='float')
+            count_num = 14
+            count_array = np.zeros(shape=(count_num, 3), dtype='int')
+            count_array1 = [[0, 0, 7], [1, 0, 1], [2, 1, 2], [3, 2, 3], [4, 3, 4], [5, 4, 5], [6, 5, 6], [7, 6, 7]]
+            for i in range(count_num):
+                count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
+            count_array = np.vstack((count_array1, count_array))
+            for i in range(count_array.shape[0]):
+                count_array[i][0] = i
+            arrayl = count_array.shape[0]
+            A = np.zeros(shape=(arrayl, 8))  # 构造系数矩阵 A
+            B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
+            de0 = count_array[0][1]  # 默认接收偏置标号
+            de1 = count_array[0][2]  # 默认发送偏置标号
+            del0 = count_array[0][1]  # 默认接收传感器位置
+            del1 = count_array[0][2]  # 默认发送传感器位置l
+            dij = self.Distance_list[del0][del1]
+            bij = self.bias[del0][del1]
+            tij = self.Time_list[del0][del1]
+            for c, a, b in count_array[1:]:
                 # 接收传感器标号
                 n = a
                 m = b
@@ -446,160 +379,39 @@ class Ultrasonic_Line():
                     else:
                         self.Time_list[j][i] = 0
                     count += 1
-        elif model == 5:
-            timebias = np.zeros(shape=(NodeA_num, 2))
-            for count_num in range(1, 25):
-                count_array = np.zeros(shape=(count_num, 3), dtype='int')
-                count_array1 = [[0, 0, 7], [1, 0, 1], [2, 2, 3], [3, 3, 4], [4, 4, 5], [5, 5, 6], [6, 6, 7]]
-                for i in range(count_num):
-                    count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
-                # count_array=np.array([[0,0,7],[1,0,1],[2,2,3],[3,3,4],[4,4,5],[5,5,6],[6,6,7],[7,0,2],
-                #                [8,1,3],[9,2,4],[10,3,5],[11,4,6],[12,5,7],[13,0,6]],dtype='int')
-                count_array = np.vstack((count_array1, count_array))
-                for i in range(count_array.shape[0]):
-                    count_array[i][0] = i
-                arrayl = count_array.shape[0]
-                A = np.zeros(shape=(arrayl, 14))  # 构造系数矩阵 A
-                B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
-                de0 = 1  # 默认接收偏置标号
-                de1 = 4  # 默认发送偏置标号
-                del0 = 1  # 默认接收传感器位置
-                del1 = 2  # 默认发送传感器位置l
-                dij = self.Distance_list[del0][del1]
-                bij = self.bias[del0][del1]
-                tij = self.Time_list[del0][del1]
-                for c, a, b in count_array:
-                    # 接收传感器标号
-                    if a == 0:
-                        n = 0
-                    else:
-                        n = a * 2 - 1
-                        # 发送传感器标号
-                    if b == 7:
-                        m = 7 * 2 - 1
-                    else:
-                        m = b * 2
-                    # ti=t[de0] 要求的系数
-                    # tj=t[de1] 要求的系数
-                    dnm = self.Distance_list[a][b]
-                    bnm = self.bias[a][b]
-                    tnm = self.Time_list[a][b]
-                    # tn=t[n] 要求的系数
-                    # tm=t[m] 要求的系数
-                    #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
-                    #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
-                    #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
-                    A[c][de0] += dnm * bij
-                    A[c][de1] += dnm * bij
-                    A[c][n] -= dij * bnm
-                    A[c][m] -= dij * bnm
-                    B[c] = dnm * tij * bij - dij * bnm * tnm
-                r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
-                if r[2] < 13:
-                    continue
-                # print(r[2])
-                for i in range(14):
-                    if i == 13:
-                        n1 = 7
-                        n2 = 1
-                    elif i == 0:
-                        n1 = 0
-                        n2 = 0
-                    else:
-                        n1 = int((i + 1) / 2)
-                        n2 = (i + 1) % 2
-                    timebias[n1][n2] = r[0][i]
-                # 对原始时间加上偏置，重新计算
-                count = 0
-                for i in range(NodeA_num):
-                    for j in range(i + 1, NodeB_num):
-                        if i != j:
-                            # 给时间赋值，单位：毫秒
-                            self.Time_list[i][j] = data_list[count] - timebias[i][0] - timebias[j][1]
-                            self.Time_list[j][i] = data_list[count] - timebias[i][0] - timebias[j][1]
-                        else:
-                            self.Time_list[j][i] = 0
-                        count += 1
-                break
-        elif model == 6:
-            timebias = np.zeros(shape=(NodeA_num, 2))
-            for count_num in range(1, 25):
-                count_array = np.zeros(shape=(count_num, 3), dtype='int')
-                count_array1 = [[0, 0, 7], [1, 0, 1], [2, 1, 2], [3, 2, 3], [4, 3, 4], [5, 4, 5], [6, 5, 6], [7, 6, 7],
-                                [8, 0, 2], [9, 1, 3], [10, 2, 4], [11, 3, 5], [12, 4, 6], [13, 5, 7], [14, 0, 6],
-                                [15, 1, 7]]
-                for i in range(count_num):
-                    count_array[i] = [i, int(sorted_speed[-i - 2] / 8), sorted_speed[-i - 2] % 8]
-                # count_array=np.array([[0,0,7],[1,0,1],[2,2,3],[3,3,4],[4,4,5],[5,5,6],[6,6,7],[7,0,2],
-                #                [8,1,3],[9,2,4],[10,3,5],[11,4,6],[12,5,7],[13,0,6]],dtype='int')
-                count_array = np.vstack((count_array1, count_array))
-                for i in range(count_array.shape[0]):
-                    count_array[i][0] = i
-                arrayl = count_array.shape[0]
-                A = np.zeros(shape=(arrayl, 14))  # 构造系数矩阵 A
-                B = np.zeros(shape=arrayl).T  # 构造转置矩阵 b （这里必须为列向量）
-                de0 = 1  # 默认接收偏置标号
-                de1 = 4  # 默认发送偏置标号
-                del0 = 1  # 默认接收传感器位置
-                del1 = 2  # 默认发送传感器位置l
-                dij = self.Distance_list[del0][del1]
-                bij = self.bias[del0][del1]
-                tij = self.Time_list[del0][del1]
-                for c, a, b in count_array:
-                    # 接收传感器标号
-                    if a == 0:
-                        n = 0
-                    else:
-                        n = a * 2 - 1
-                        # 发送传感器标号
-                    if b == 7:
-                        m = 7 * 2 - 1
-                    else:
-                        m = b * 2
-                    # ti=t[de0] 要求的系数
-                    # tj=t[de1] 要求的系数
-                    dnm = self.Distance_list[a][b]
-                    bnm = self.bias[a][b]
-                    tnm = self.Time_list[a][b]
-                    # tn=t[n] 要求的系数
-                    # tm=t[m] 要求的系数
-                    #   d[n][m]*bias[i][j]*t[i]+d[n][m]*bias[i][j]*t[j]-
-                    #   d[i][j]*bias[n][m]*t[n]-d[i][j]*bias[n][m]*t[m]==
-                    #   d[n][m]*t[i][j]*bias[i][j]-d[i][j]*bias[n][m]*t[n][m]
-                    A[c][de0] += dnm * bij
-                    A[c][de1] += dnm * bij
-                    A[c][n] -= dij * bnm
-                    A[c][m] -= dij * bnm
-                    B[c] = dnm * tij * bij - dij * bnm * tnm
-                r = lstsq(A, B, rcond=None)  # 调用 solve 函数求解
-                if r[2] < 13:
-                    continue
-                # print(r[2])
-                for i in range(14):
-                    if i == 13:
-                        n1 = 7
-                        n2 = 1
-                    elif i == 0:
-                        n1 = 0
-                        n2 = 0
-                    else:
-                        n1 = int((i + 1) / 2)
-                        n2 = (i + 1) % 2
-                    timebias[n1][n2] = r[0][i]
-                # 对原始时间加上偏置，重新计算
-                count = 0
-                for i in range(NodeA_num):
-                    for j in range(i + 1, NodeB_num):
-                        if i != j:
-                            # 给时间赋值，单位：毫秒
-                            self.Time_list[i][j] = data_list[count] - timebias[i][0] - timebias[j][1]
-                            self.Time_list[j][i] = data_list[count] - timebias[i][0] - timebias[j][1]
-                        else:
-                            self.Time_list[j][i] = 0
-                        count += 1
-                break
+
         self.Speed_list = np.divide(self.Distance_list, self.Time_list)  # 速度list赋值
         self.Speed_list = np.divide(self.Speed_list, self.bias)
+
+    def speed_homogenization(self):
+        """
+        速度均一化操作
+        """
+        # 速度均一化操作
+        # 找出比thres大的下标号
+        temp = np.where(self.Speed_list.reshape(NodeA_num * NodeB_num) < 1000)[0]
+        # 找出最大/小速度的下标号
+        maxlabel = temp[self.Speed_list.reshape(NodeA_num * NodeB_num)[temp].argsort()[-1]]
+        mixlabel = temp[self.Speed_list.reshape(NodeA_num * NodeB_num)[temp].argsort()[0]]
+        maxspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[maxlabel]
+        minspeed = self.Speed_list.reshape(NodeA_num * NodeB_num)[mixlabel]
+        mm = maxspeed - minspeed
+        self.yuzhi = (maxspeed - minspeed - 50) / mm
+        self.mm = mm
+        self.minspeed = minspeed
+        self.maxspeed = maxspeed
+        # print(self.mm)
+        count = 0
+        for i in range(NodeA_num):
+            for j in range(i + 1, NodeB_num):
+                if i != j:
+                    # 给时间赋值，单位：毫秒
+                    self.Speed_list[i][j] = (self.Speed_list[i][j] - minspeed) / mm
+                    self.Speed_list[j][i] = (self.Speed_list[j][i] - minspeed) / mm
+                else:
+                    self.Time_list[j][i] = 0
+                count += 1
+        pass
 
 
 def ray_ellipse(x0, y0, x1, y1, x2, y2, ea, eb):
@@ -778,7 +590,7 @@ class Cell():
         """
         根据直线速度来更新cell速度
         """
-        plus=self.X[1][1]-self.X[0][0]
+        plus = self.X[1][1] - self.X[0][0]
         for i in range(Cell_Number):
             for j in range(Cell_Number):
                 count = 0
@@ -787,22 +599,94 @@ class Cell():
                     for m in range(n + 1, NodeB_num):
                         if self.inner[i][j] != True:
                             continue
-                        dis = inter_point5(self.X[i][j], self.Y[i][j], self.X[i][j]+plus, self.Y[i][j]+plus,
+                        dis = inter_point5(self.X[i][j], self.Y[i][j], self.X[i][j] + plus, self.Y[i][j] + plus,
                                            Node_list[n].x, Node_list[n].y, Node_list[m].x, Node_list[m].y)
                         if dis == None or dis == 0:
                             continue
                         Ptemp = dis * ultraline.Time_list[n][m] / (
-                                    ultraline.Distance_list[n][m] * ultraline.Distance_list[n][m])
+                                ultraline.Distance_list[n][m] * ultraline.Distance_list[n][m])
                         P.append(Ptemp)
-                P=np.array(P,dtype='float')
-                if P.shape[0]>0:
-                    self.V[i][j]=1/np.sum(P)
+                P = np.array(P, dtype='float')
+                if P.shape[0] > 0:
+                    self.V[i][j] = 1 / np.sum(P)
+
+    def update_average_disV2(self, ultraline, Node_list):
+        """
+        根据直线速度来更新cell速度
+        """
+        plus = self.X[1][1] - self.X[0][0]
+        V_list = np.zeros(shape=(Cell_Number, Cell_Number, 2), dtype='float')
+        tempx = self.X.reshape((Cell_Number * Cell_Number))
+        tempy = self.Y.reshape((Cell_Number * Cell_Number))
+        tempInner = self.inner.reshape((Cell_Number * Cell_Number))
+        for n in range(NodeA_num):
+            for m in range(n + 1, NodeB_num):
+                maxx = round(max(Node_list[n].x, Node_list[m].x), 6)
+                minx = round(min(Node_list[n].x, Node_list[m].x), 6)
+                maxy = round(max(Node_list[n].y, Node_list[m].y), 6)
+                miny = round(min(Node_list[n].y, Node_list[m].y), 6)
+                # 排除k=0和k无穷的选项
+                if maxx == minx:  # k无穷
+                    temp = np.where((tempx + plus > minx) & (tempx <= minx) & (tempInner == True))[0]
+                elif maxy == miny:
+                    temp = np.where((tempy > miny - plus) & (tempy <= miny) & (tempInner == True))[0]
+                else:
+                    Xhang = self.X[0, :]
+                    Ylie = self.Y[:, 0]
+                    xs = np.where(Xhang <= minx)[0][-1]
+                    xb = np.where(Xhang >= maxx)[0][0]
+                    ys = np.where(Ylie <= miny)[0][0]
+                    yb = np.where(Ylie >= maxy)[0][-1]
+
+                    k = (Node_list[n].y - Node_list[m].y) / (Node_list[n].x - Node_list[m].x)
+                    b = Node_list[n].y - k * Node_list[n].x
+                    if plus / k > 0:
+                        varx = math.ceil(plus / k)  # 如果斜率大于0向上取整
+                    else:
+                        varx = math.floor(plus / k)  # 如果斜率小于0向下取整
+                    temp = []
+                    xt = self.X[0]
+                    for i in range(ys, yb, -1):
+                        xzhi = (self.Y[i][0] - b) / k  #0
+                        label = np.where((xt > xzhi - plus) & (xt <= xzhi))[0]
+                        if label.shape[0]==0:
+                            continue
+                        else:
+                            label=label[0]
+                        if varx > 0:
+                            for j in range(-1, varx):
+                                temp.append(i * Cell_Number + label + j)
+                        else:
+                            for j in range(0, varx, -1):
+                                temp.append(i * Cell_Number + label + j)
+                # 根据temp更新速度
+                xytemp=[[]for i in range(2)]
+                for i in temp:
+                    yl = math.floor(i / Cell_Number)
+                    xl = i % Cell_Number
+                    if self.inner[yl][xl] !=True:
+                        continue
+                    xytemp[0].append(yl)
+                    xytemp[1].append(xl)
+                    dis=inter_point5(self.X[yl][xl], self.Y[yl][xl], self.X[yl][xl] + plus, self.Y[yl][xl] + plus,
+                                     Node_list[n].x, Node_list[n].y, Node_list[m].x, Node_list[m].y)
+                    if dis == None:
+                        continue
+                    Vtemp = ultraline.Speed_list[n][m]
+                    V_list[yl][xl][0] = (V_list[yl][xl][0] * V_list[yl][xl][1] + Vtemp) / (V_list[yl][xl][1] + 1)
+                    V_list[yl][xl][1]+=1
+                xytemp=np.array(xytemp)
+                pass
+
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                self.V[i][j] = V_list[i][j][0]
 
 
 
 def inter_point5(x0, y0, x1, y1, x2, y2, x3, y3):
     """
-    获取经过点(x2,y2),(x3,y3)的直线，在由(x0,x1),(y0,y1)所形成的的方块中的距离
+    获取经过点(x2,y2),(x3,y3)的直线，在由(x0,x1),(y0,y1)所形成的的方块中的距离，取下限，不取上限
     :param x0: 方块x最小值
     :param y0: 方块y最小值
     :param x1: 方块x最大值
@@ -833,9 +717,15 @@ def inter_point5(x0, y0, x1, y1, x2, y2, x3, y3):
         Max = 0
         for i in range(listxy.shape[1]):
             for j in range(i + 1, listxy.shape[1]):
-                dis = math.sqrt(
-                    (listxy[0][i] - listxy[0][j]) * (listxy[0][i] - listxy[0][j]) + (listxy[1][i] - listxy[1][j]) * (
-                            listxy[1][i] - listxy[1][j]))
+                if listxy[1][i] == listxy[1][j] and listxy[1][i] == y1:
+                    dis = 0
+                elif listxy[0][i] == listxy[0][j] and listxy[0][i] == x1:
+                    dis = 0
+                else:
+                    dis = math.sqrt(
+                        (listxy[0][i] - listxy[0][j]) * (listxy[0][i] - listxy[0][j]) + (
+                                listxy[1][i] - listxy[1][j]) * (
+                                listxy[1][i] - listxy[1][j]))
                 Max = dis if dis > Max else Max
     return Max
 
@@ -1040,18 +930,18 @@ def show_heatmap(list_v, red_thre=0.25, yellow_red=1.1, green_yellow=1.1, interf
     cdict = {'red': ((0.0, 1.0, 1.0),
                      (yellow_thre, 1.0, 1.0),
                      (green_thre, 0.0, 0.0),
-                     (0.99, 0.0, 1.0),
+                     (0.999, 0.0, 1.0),
                      (1.0, 1.0, 0.0)),
 
              'green': ((0.0, 1.0, 0.0),
-                       (red_thre, 1.0, 1.0),
-                       (0.99, 1.0, 1.0),
+                       (red_thre, 1.0, 1.0),  # 之后纯绿色
+                       (0.999, 1.0, 1.0),
                        (1.0, 1.0, 0.0)),
 
              'blue': ((0.0, 1.0, 0.0),
                       (0.5, 0.0, 0.0),
                       (0.75, 0.0, 0.0),
-                      (0.99, 0.0, 1.0),
+                      (0.999, 0.0, 1.0),
                       (1.0, 1.0, 0.0)),
              }
     # 红-黄-绿 无渐变
@@ -1082,6 +972,9 @@ def show_heatmap(list_v, red_thre=0.25, yellow_red=1.1, green_yellow=1.1, interf
         im1 = axs.imshow(list_v, cmap=blue_red1, interpolation='bicubic')
     else:
         im1 = axs.imshow(list_v, cmap=blue_red1)
+    axs.tick_params(width=5, length=5, pad=10)
+    axs.set_xlim(0, 100)  # 设置坐标轴的大小
+    axs.set_ylim(0, 100)
     cb = fig.colorbar(im1, ax=axs)  # 在图旁边加上颜色bar
     cb.ax.tick_params(labelsize=50)  # 设置色标刻度字体大小。
     plt.show()
@@ -1381,8 +1274,6 @@ def get_TR_dis_prop(out_L, r, angle):
         return 0
 
 
-
-
 def show_txt_ray(timetxtfilename, locat_model, length=0, locat_file=None, correct_model=1):
     """
         :param timetxtfilename: txt文件位置
@@ -1395,12 +1286,10 @@ def show_txt_ray(timetxtfilename, locat_model, length=0, locat_file=None, correc
         :param correct_model: 时间矫正模式
         0:不做变化
         1:只有李光辉的1-0.2*角度*角度
-        2：李光辉+按2倍位置计算时间偏差，7+14，7个最周围+14个最快速度
-        3：李光辉+按1倍位置计算时间偏差，7+自动方程式
-        4：李光辉+按1倍位置计算时间偏差，自动设置方程式
-        5:李光辉+按1倍位置计算时间偏差，7+14
-        6:李光辉+按2倍位置计算时间偏差，7+自动
-        7:李光辉+按2倍位置计算时间偏差，7+自动，考虑不同材质通过的距离问题
+        2：李光辉+按1倍位置计算时间偏差，7+自动方程式
+        3：李光辉+按1倍位置计算时间偏差，自动设置方程式
+        4:李光辉+按1倍位置计算时间偏差，7+7
+        5:李光辉+按1倍位置计算时间偏差，7+7，考虑不同材质通过的距离问题
         """
     # 读取时间
     timedata = readfile(timetxtfilename)
@@ -1458,18 +1347,26 @@ def show_txts_ray(timetxtfilename, locat_model, length=0, locat_file=None, corre
     :param   correct_model: 时间矫正模式
         0:不做变化
         1:只有李光辉的1-0.2*角度*角度
-        2：李光辉+按2倍位置计算时间偏差，7+14，7个最周围+14个最快速度
-        3：李光辉+按1倍位置计算时间偏差，7+自动方程式
-        4：李光辉+按1倍位置计算时间偏差，自动设置方程式
-        5:李光辉+按1倍位置计算时间偏差，7+14
-        6:李光辉+按2倍位置计算时间偏差，7+自动
-        7:李光辉+按2倍位置计算时间偏差，7+自动，考虑不同材质通过的距离问题
+        2：李光辉+按1倍位置计算时间偏差，7+自动方程式
+        3：李光辉+按1倍位置计算时间偏差，自动设置方程式
+        4:李光辉+按1倍位置计算时间偏差，7+7
+        5:李光辉+按1倍位置计算时间偏差，7+7，考虑不同材质通过的距离问题
     """
-    if os.path.isfile(timetxtfilename) and timetxtfilename.endswith('.txt'):
-        max, min, mm = show_txt_ray(timetxtfilename=timetxtfilename, locat_model=locat_model, locat_file=locat_file,
-                                    correct_model=correct_model, length=length)
-        # print(max, min, mm)
-        return max, min, mm
+    if os.path.isfile(timetxtfilename):
+        if timetxtfilename.endswith('.txt'):
+            max, min, mm = show_txt_ray(timetxtfilename=timetxtfilename, locat_model=locat_model, locat_file=locat_file,
+                                        correct_model=correct_model, length=length)
+            print(max, min, mm)
+            return max, min, mm
+        elif timetxtfilename.endswith('.npy'):
+            timedata = readfile(timetxtfilename)
+            if len(timedata.shape) > 1:
+                return 0, 0, 0
+            max, min, mm = show_txt_ray(timetxtfilename=timetxtfilename, locat_model=locat_model, locat_file=locat_file,
+                                        correct_model=correct_model, length=length)
+            print(max, min, mm)
+            return max, min, mm
+
     elif os.path.isdir(timetxtfilename):
         filenames = [timetxtfilename + name for name in os.listdir(timetxtfilename)
                      if os.path.isfile(os.path.join(timetxtfilename, name)) and
@@ -1480,9 +1377,8 @@ def show_txts_ray(timetxtfilename, locat_model, length=0, locat_file=None, corre
             max, min, mm = show_txt_ray(timetxtfilename=name, locat_model=locat_model, locat_file=locat_file,
                                         correct_model=correct_model, length=length)
             summm += float(mm)
-            # print(max, min,mm)
-
-
+            print(max, min, mm)
+    return max, min, mm
 
 
 def show_npy(timedata, label_name, locat_model, defect_model, length=0, locat_file=None, correct_model=1):
@@ -1583,7 +1479,6 @@ def show_npys(timefile, label_name, locat_model, defect_model, length=0, locat_f
             Precision = 0
             Recall = 0
             for i in range(timedata.shape[0]):
-                print(i)
                 Accuracyt, Precisiont, Recallt = show_npy(timedata[i], label_name, locat_model,
                                                           defect_model,
                                                           length=length, locat_file=locat_file,
@@ -1650,12 +1545,24 @@ def get_prop_dis(angle, radius=10, Ring_numbers=10):
 
 
 def show_distribution():
+    # locat_file = '../Data3/Data_npy/实验室1号树木/location.txt'
+    # locat_list = [[] for i in range(8)]
+    # with open(locat_file, 'r', encoding='utf-8') as file_to_read:
+    #     for i in range(8):
+    #         lines = file_to_read.readline()  # 整行读取数据
+    #         nums = re.split(',|\n', lines)
+    #         locat_list[i].append(nums[0])  # 添加新读取的数据
+    #         locat_list[i].append(nums[1])  # 添加新读取的数据
+    # locat_list = np.array(locat_list, dtype='float').reshape(8, 2)  # 将数据从list类型转换为array类型。
+    # x, y = get_maxXY_length(locat_list)
     locat_list = get_locationbyradius(10, 10)
     Node_list = Node_update(locat_list)
+    # cell_100 = Cell(x, y, Node_list)  # 根据x,y生成不规则横截面
+
     cell_100 = Cell(10, 10, Node_list)
     # 根据公式y=1-k*b*b来更新速度
     k = 0.2
-    time_data = np.zeros(shape=int(NodeA_num*(NodeA_num-1)/2), dtype='float')
+    time_data = np.zeros(shape=int(NodeA_num * (NodeA_num - 1) / 2), dtype='float')
     count = 0
     for i in range(NodeA_num):
         for j in range(i + 1, NodeA_num):
@@ -1668,9 +1575,11 @@ def show_distribution():
             V_temp = 1 - k * biospi * biospi
             time_data[count] = distance(Node_list[i], Node_list[j]) / V_temp
             count += 1
-    Ultra_Line = Ultrasonic_Line(Node_list, Node_list, time_data)
-    cell_100.update_disV(Ultra_Line, Node_list)
-    show_heatmap(cell_100.V)
+    Ultra_Line = Ultrasonic_Line(Node_list, Node_list, time_data, distemp=0)
+    # Ultra_Line.speed_homogenization()
+    cell_100.update_average_disV(Ultra_Line, Node_list)
+    # np.save('C500_N500_速度分布.npy', cell_100.V)
+    show_heatmap(cell_100.V, red_thre=0.3, yellow_red=2, green_yellow=1.5, interflag=False)
 
 
 def getangle_byxy(x1, y1, x2, y2):
@@ -1697,7 +1606,7 @@ def getangle_byxy(x1, y1, x2, y2):
     return angle
 
 
-def test():
+def V_distribution():
     """
     假设树木内部声速按年轮分布，测试一下
     """
@@ -1714,20 +1623,107 @@ def test():
     V2 = sum(prop_radial) / time2
     v12 = V1 / V2
     k = (1 - v12) / ((angle * math.pi / 180) * (angle * math.pi / 180))
-    print('1')
+
+
+def show_V_dis():
+    filename = '../Data_distrubution/4号树木速度分布.npy'
+    data = np.load(filename)
+    for i in range(100):
+        for j in range(100):
+            if data[i][j] == 1:
+                data[i][j] = 1.01
+    show_heatmap(data, red_thre=0.5, yellow_red=1.5, green_yellow=1.1, interflag=False)
+    pass
+
+
+def intersection_polylines():
+    filename = '../Data_distrubution/速度分布3.npy'
+    data = np.load(filename)
+    cell_100 = Cell(10, 10)
+    for i in range(Cell_Number):
+        for j in range(Cell_Number):
+            if cell_100.inner[i][j] == True:
+                cell_100.V[i][j] = data[i][j]
+    x1 = 0
+    y1 = 10
+    xy2_array = [[0, -10], [7.071067812, -7.071067812], [10, 0], [7.071067812, 7.071067812]]
+    xy2 = np.array(xy2_array, dtype='float')
+    node1 = Node(x1, y1)
+    for xy2i in range(xy2.shape[0]):
+        x2 = xy2[xy2i][0]
+        y2 = xy2[xy2i][1]
+        node2 = Node(x2, y2)
+        dis = distance(node1, node2)
+        ntime = cal_time(x1, y1, x2, y2, cell_100)
+        V12 = dis / ntime - 30 / 1000
+        ntime = dis / V12
+        xytemp = [[] for i in range(2)]
+        for i in range(Cell_Number):
+            for j in range(Cell_Number):
+                if cell_100.inner[i][j] != True:
+                    continue
+                t1 = cal_time(x1, y1, cell_100.X[i][j], cell_100.Y[i][j], cell_100)
+                t2 = cal_time(cell_100.X[i][j], cell_100.Y[i][j], x2, y2, cell_100)
+                if t1 + t2 < ntime:
+                    xytemp[0].append(cell_100.X[i][j])
+                    xytemp[1].append(cell_100.Y[i][j])
+        xytemp = np.array(xytemp, dtype='float')
+        name = str(xy2i) + '_4_30_location.npy'
+        np.save('../location_Data/' + name, xytemp)
+        pass
+
+
+def cal_time(x1, y1, x2, y2, cell_100):
+    """
+    计算由点(x1,y1),(x2,y2)构成的线段，在cell_100中传播的时间和
+    :param x1:
+    :param y1:
+    :param x2:
+    :param y2:
+    :param cell_100:
+    :return:
+    """
+    plus = cell_100.X[1][1] - cell_100.X[0][0]
+    T = []
+    xmax = max(x1, x2)
+    xmin = min(x1, x2)
+    ymax = max(y1, y2)
+    ymin = min(y1, y2)
+    for i in range(Cell_Number):
+        for j in range(Cell_Number):
+            xt = cell_100.X[i][j]
+            yt = cell_100.Y[i][j]
+            if not cell_100.inner[i][j] or xt + plus < xmin or xt >= xmax or yt + plus < ymin or yt >= ymax:
+                continue
+            dis = inter_point5(cell_100.X[i][j], cell_100.Y[i][j], cell_100.X[i][j] + plus,
+                               cell_100.Y[i][j] + plus,
+                               x1, y1, x2, y2)
+            if dis == None:
+                continue
+            Ttemp = dis / cell_100.V[i][j]
+            T.append(Ttemp)
+    T = np.array(T, dtype='float')
+    if T.shape[0] > 0:
+        return np.sum(T)
+    else:
+        return 0
 
 
 if __name__ == '__main__':
-    NodeA_num = 12
+    NodeA_num = 50
     NodeB_num = NodeA_num
-    Cell_Number = 20
+    Cell_Number = 50
     warnings.filterwarnings("ignore")
-    test()
-    filename = '../Data3/Data_npy/实验室6号树木/6号树木501x28.npy'
-    labelname = '../Data3/label/实验室6号树木/label6_irregular.txt'
-    locat_file = '../Data3/Data_npy/实验室6号树木/location.txt'
+    filename = '../Data3/Data_npy/实验室4号树木/4树木190x28_mean.npy'
+    labelname = '../Data3/label/实验室4号树木/label4_irregular.txt'
+    locat_file = '../Data3/Data_npy/实验室4号树木/location.txt'
     # show_npys(filename, labelname, locat_model=1, defect_model=0, locat_file=locat_file, correct_model=1)
-    filedir = '../Data3/Data_file/实验室5号树木/'
-    locat_file = '../Data3/Data_npy/实验室5号树木/location.txt'
-    show_txts_ray(timetxtfilename=filedir, locat_model=1, locat_file=locat_file, correct_model=5)
+    # filedir = '../Data3/Data_file/实验室5号树木/'
+    # locat_file = '../Data3/Data_npy/实验室5号树木/location.txt'
+    # show_txts_ray(timetxtfilename=filename, locat_model=1, locat_file=locat_file, correct_model=0)
+    # show_txts_ray(timetxtfilename=filename, locat_model=1, locat_file=locat_file, correct_model=4)
+    # max, min, mm = show_txts_ray(timetxtfilename=filename, locat_model=0, locat_file=locat_file, correct_model=1,
+    #                              length=100.53)
     show_distribution()
+    # intersection_polylines()
+    # show_V_dis()

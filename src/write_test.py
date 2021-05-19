@@ -165,7 +165,7 @@ def write_only_time_mean(osname):
         outcome.append(data_list)
     outcome = np.array(outcome).reshape(-1, 28)
     outcome=np.mean(outcome,axis=0)
-    np.save('../Data3/Data_npy/实验室2号树木/locate1/2号树木501x28_mean.npy', outcome)
+    np.save('../Data3/Data_npy/实验室4号树木/4树木190x28_mean.npy', outcome)
 
 
 def writejd_only_time(osname):
@@ -361,4 +361,4 @@ if __name__ == '__main__':
     NodeA_num=8
     # readnpy_writex()
     # write_only_time(osname = '../Data3/Data_file/实验室6号树木/')
-    write_only_time_mean(osname = '../Data3/Data_file/实验室2号树木/locate1/')
+    write_only_time_mean(osname = '../Data3/Data_file/实验室4号树木/')
